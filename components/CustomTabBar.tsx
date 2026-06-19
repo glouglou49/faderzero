@@ -6,7 +6,7 @@ import { IconSymbol } from './ui/icon-symbol';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-export function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+export function CustomTabBar({ state, navigation }: BottomTabBarProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [showLiveMenu, setShowLiveMenu] = useState(false);
@@ -123,7 +123,7 @@ export function CustomTabBar({ state, descriptors, navigation }: BottomTabBarPro
                 🎤 Entrer en Mode Scène
               </Text>
               <Text className="text-xs text-zinc-400 mt-1 text-center font-medium">
-                Sélectionnez l'interface de scène souhaitée
+                Sélectionnez l&apos;interface de scène souhaitée
               </Text>
             </View>
 

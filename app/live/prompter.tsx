@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Modal, ActivityIndicator, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';

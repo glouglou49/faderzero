@@ -21,7 +21,7 @@ function generateUUID(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     try {
       return crypto.randomUUID();
-    } catch (e) {
+    } catch {
       // Ignorer l'erreur et utiliser le fallback
     }
   }

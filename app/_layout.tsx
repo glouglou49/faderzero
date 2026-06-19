@@ -1,12 +1,10 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { DarkTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SQLiteProvider, type SQLiteDatabase } from 'expo-sqlite';
 import { View } from 'react-native';
 import 'react-native-reanimated';
 import '../global.css';
-
-import { useColorScheme } from '@/hooks/use-color-scheme';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -32,8 +30,6 @@ async function initializeDatabase(db: SQLiteDatabase) {
 }
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
-
   return (
     <SQLiteProvider databaseName="faderzero.db" onInit={initializeDatabase}>
       <View className="flex-1 bg-black">

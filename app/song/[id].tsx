@@ -55,7 +55,7 @@ export default function SongDetailScreen() {
       }
     }
     fetchSong();
-  }, [id, db]);
+  }, [id, db, router]);
 
   // Fonction de sauvegarde brute dans la base SQLite
   const saveToDatabase = async (songToSave: Song) => {
@@ -192,8 +192,8 @@ export default function SongDetailScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}
       >
-        {/* En-tête de l'éditeur personnalisé */}
-      <View className="px-5 py-3 border-b border-white/10 flex-row justify-between items-center bg-zinc-900/50">
+      {/* En-tête de l'éditeur personnalisé */}
+      <View className="px-5 py-3 border-b border-white/10 flex-row justify-between items-center bg-zinc-900/50 relative min-h-[56px]">
         <TouchableOpacity
           onPress={() => {
             saveImmediately().then(() => {
@@ -201,7 +201,7 @@ export default function SongDetailScreen() {
             });
           }}
           activeOpacity={0.7}
-          className="bg-white/5 border border-white/10 px-3.5 py-2 rounded-xl flex-row items-center justify-center gap-x-1.5"
+          className="bg-white/5 border border-white/10 px-3.5 py-2 rounded-xl flex-row items-center justify-center gap-x-1.5 z-10"
         >
           <IconSymbol size={16} name="chevron.left" color="#ffffff" />
           <Text className="text-white font-semibold text-sm">
@@ -209,27 +209,25 @@ export default function SongDetailScreen() {
           </Text>
         </TouchableOpacity>
 
+        {/* Titre de la chanson centré */}
+        <View pointerEvents="none" className="absolute left-0 right-0 top-0 bottom-0 justify-center items-center">
+          <Text className="text-white font-bold text-sm max-w-[45%] text-center" numberOfLines={1}>
+            {song.title || 'Sans titre'}
+          </Text>
+        </View>
+
         {/* Conteneur droit : Indicateur & Bouton Supprimer */}
-        <View className="flex-row items-center gap-x-3.5">
+        <View className="flex-row items-center gap-x-3.5 z-10">
           {/* Indicateur de sauvegarde automatique */}
-          <View className="flex-row items-center space-x-1.5">
+          <View className="flex-row items-center justify-center min-w-[20px]">
             {saveStatus === 'saved' && (
-              <>
-                <View className="w-2 h-2 rounded-full bg-emerald-500" />
-                <Text className="text-xs font-semibold text-zinc-300">Sauvegardé</Text>
-              </>
+              <View className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
             )}
             {saveStatus === 'saving' && (
-              <>
-                <ActivityIndicator size="small" color="#6366f1" className="scale-75" />
-                <Text className="text-xs font-semibold text-zinc-300">Enregistrement...</Text>
-              </>
+              <ActivityIndicator size="small" color="#6366f1" className="scale-75" />
             )}
             {saveStatus === 'error' && (
-              <>
-                <View className="w-2 h-2 rounded-full bg-rose-500" />
-                <Text className="text-xs font-semibold text-rose-500">Erreur de sauvegarde</Text>
-              </>
+              <View className="w-2.5 h-2.5 rounded-full bg-rose-500" />
             )}
           </View>
 
