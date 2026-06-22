@@ -1,16 +1,19 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { getFloatingTabBarContentPadding } from '../../constants/navigation';
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const bottomContentPadding = getFloatingTabBarContentPadding(insets.bottom);
 
   return (
     <SafeAreaView className="flex-1 bg-black" edges={['top']}>
       <ScrollView 
-        contentContainerStyle={{ flexGrow: 1, paddingBottom: 100 }}
+        contentContainerStyle={{ flexGrow: 1, paddingBottom: bottomContentPadding }}
         className="px-6 pt-8"
         showsVerticalScrollIndicator={false}
       >

@@ -2,10 +2,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Modal, ActivityIndicator, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { StatusBar } from 'expo-status-bar';
 import * as NavigationBar from 'expo-navigation-bar';
+import {
+  getModalBottomOffset,
+  getModalFooterBottomPadding,
+} from '../../constants/navigation';
 
 export type SongStatus = 'Idee' | 'En cours' | 'Pret';
 
@@ -16,27 +20,35 @@ interface Song {
   bpm: number | null;
   key: string | null;
   text_content: string;
+  duration_seconds: number;
   updated_at: string;
 }
 
-const MOCK_SONGS: Song[] = [
-  { id: 'mock-1', title: "Intro / Ambiance", bpm: null, key: null, status: 'Pret', text_content: 'Aucune parole pour l\'intro.', updated_at: new Date().toISOString() },
-  { id: 'mock-2', title: "Bohemian Rhapsody", bpm: 72, key: 'Bb', status: 'Pret', text_content: '[Bb6] Is this the real life?\n[C7] Is this just fantasy?\n[F7] Caught in a landslide\n[Bb] No escape from reality\n\n[Gm] Open your eyes\n[Bb7] Look up to the skies and [Eb] see\n\nI\'m just a poor boy, I need no sympathy\nBecause I\'m easy come, easy go\nLittle high, little low', updated_at: new Date().toISOString() },
-  { id: 'mock-3', title: "Don't Stop Me Now", bpm: 82, key: 'F', status: 'Pret', text_content: '[F] Tonight I\'m gonna have [Am] myself a real [Dm] good time\nI feel a[Gm]live\nAnd the [C] world I\'ll turn it inside [F] out, yeah\nAnd [Bb] floating in [Gm] ecstasy so', updated_at: new Date().toISOString() },
-  { id: 'mock-4', title: "Another One Bites", bpm: 110, key: 'Fm', status: 'Pret', text_content: '[Fm] Steve walks warily down the street\nWith the brim pulled [Bbm] low\nAin\'t no sound but the sound of his feet\n[Fm] Machine guns ready to go', updated_at: new Date().toISOString() },
-  { id: 'mock-5', title: "Under Pressure", bpm: 110, key: 'D', status: 'Pret', text_content: '[D] Pressure on [A] people\n[G] People on [A] streets\n[D] Pressure [A] down on me\nPressing down on [G] you, no man ask [A] for', updated_at: new Date().toISOString() },
-  { id: 'mock-6', title: "Radio Ga Ga", bpm: 156, key: 'F', status: 'Pret', text_content: '[F] I\'d sit alone and [Bb] watch your [F] light\nMy [Bb] only friend through [F] teenage [Bb] nights\nAnd [F] everything I [Bb] had to [F] know\nI [Gm] heard it on my [C] radio', updated_at: new Date().toISOString() }
-];
+interface SetlistOption {
+  id: string;
+  name: string;
+  song_count: number;
+  total_duration: number;
+}
+
+const formatDuration = (seconds: number) => {
+  const safeSeconds = Math.max(0, seconds || 0);
+  return `${String(Math.floor(safeSeconds / 60)).padStart(2, '0')}:${String(safeSeconds % 60).padStart(2, '0')}`;
+};
 
 export default function PrompterLiveScreen() {
   const db = useSQLiteContext();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const [songs, setSongs] = useState<Song[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedSong, setSelectedSong] = useState<Song | null>(null);
   const [prompterSpeed, setPrompterSpeed] = useState<0 | 1 | 2 | 3>(0);
   const [showSongPicker, setShowSongPicker] = useState(false);
+  const [showSourcePicker, setShowSourcePicker] = useState(true);
+  const [setlists, setSetlists] = useState<SetlistOption[]>([]);
+  const [sourceName, setSourceName] = useState('');
 
   const scrollViewRef = useRef<ScrollView>(null);
   const scrollY = useRef(0);
@@ -53,30 +65,66 @@ export default function PrompterLiveScreen() {
     };
   }, []);
 
-  // Charger les morceaux depuis SQLite
+  // Charger les sources disponibles avant de démarrer le prompteur.
   useEffect(() => {
-    async function loadSongs() {
+    async function loadSources() {
       try {
-        const result = await db.getAllAsync<Song>(
-          'SELECT * FROM songs ORDER BY updated_at DESC'
-        );
-        if (result && result.length > 0) {
-          setSongs(result);
-          setSelectedSong(result[0]);
-        } else {
-          setSongs(MOCK_SONGS);
-          setSelectedSong(MOCK_SONGS[1]);
-        }
+        const rows = await db.getAllAsync<SetlistOption>(`
+          SELECT s.id, s.name, COUNT(ss.song_id) AS song_count,
+                 COALESCE(SUM(song.duration_seconds), 0) AS total_duration
+          FROM setlists s
+          LEFT JOIN setlist_songs ss ON ss.setlist_id = s.id
+          LEFT JOIN songs song ON song.id = ss.song_id
+          GROUP BY s.id, s.name
+          ORDER BY s.created_at DESC
+        `);
+        setSetlists(rows);
       } catch (error) {
-        console.error('Erreur chargement morceaux prompteur:', error);
-        setSongs(MOCK_SONGS);
-        setSelectedSong(MOCK_SONGS[1]);
+        console.error('Erreur chargement sources prompteur:', error);
       } finally {
         setLoading(false);
       }
     }
-    loadSongs();
+    loadSources();
   }, [db]);
+
+  const applySongs = (rows: Song[], label: string) => {
+    setSongs(rows);
+    setSelectedSong(rows[0] ?? null);
+    setSourceName(label);
+    setPrompterSpeed(0);
+    setShowSourcePicker(false);
+  };
+
+  const selectAllSongs = async () => {
+    setLoading(true);
+    try {
+      const rows = await db.getAllAsync<Song>('SELECT * FROM songs ORDER BY title COLLATE NOCASE ASC');
+      applySongs(rows, 'Toutes les chansons');
+    } catch (error) {
+      console.error('Erreur chargement du répertoire :', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const selectSetlist = async (setlist: SetlistOption) => {
+    setLoading(true);
+    try {
+      const rows = await db.getAllAsync<Song>(`
+        SELECT s.*
+        FROM setlist_songs ss
+        INNER JOIN songs s ON s.id = ss.song_id
+        WHERE ss.setlist_id = ?
+        ORDER BY ss.position ASC
+      `, [setlist.id]);
+      applySongs(rows, setlist.name);
+    } catch (error) {
+      console.error('Erreur chargement de la setlist :', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Réinitialiser le scroll lors du changement de chanson
   useEffect(() => {
@@ -107,12 +155,8 @@ export default function PrompterLiveScreen() {
     const currentIndex = songs.findIndex(s => s.id === selectedSong.id);
     if (currentIndex === -1) return;
 
-    let nextIndex = currentIndex;
-    if (direction === 'next') {
-      nextIndex = (currentIndex + 1) % songs.length;
-    } else {
-      nextIndex = (currentIndex - 1 + songs.length) % songs.length;
-    }
+    const nextIndex = direction === 'next' ? currentIndex + 1 : currentIndex - 1;
+    if (nextIndex < 0 || nextIndex >= songs.length) return;
     setSelectedSong(songs[nextIndex]);
   };
 
@@ -163,6 +207,21 @@ export default function PrompterLiveScreen() {
     );
   }
 
+  const currentSongIndex = selectedSong ? songs.findIndex((item) => item.id === selectedSong.id) : -1;
+  const previousSong = currentSongIndex > 0 ? songs[currentSongIndex - 1] : null;
+  const nextSong = currentSongIndex >= 0 && currentSongIndex < songs.length - 1 ? songs[currentSongIndex + 1] : null;
+  const previousButtonClassName = previousSong
+    ? 'flex-1 border border-white/15 h-24 rounded-2xl items-center justify-center px-3 shadow-2xl overflow-hidden'
+    : 'flex-1 border border-white/10 h-24 rounded-2xl items-center justify-center px-3 shadow-2xl overflow-hidden';
+  const nextButtonClassName = nextSong
+    ? 'flex-1 border border-white/15 h-24 rounded-2xl items-center justify-center px-3 shadow-2xl overflow-hidden'
+    : 'flex-1 border border-white/10 h-24 rounded-2xl items-center justify-center px-3 shadow-2xl overflow-hidden';
+  const bottomNavigationInset = Math.max(insets.bottom, 16);
+  const prompterControlsBottomOffset = bottomNavigationInset + 8;
+  const prompterContentBottomPadding = bottomNavigationInset + 160;
+  const bottomSheetOffset = getModalBottomOffset(insets.bottom);
+  const bottomSheetFooterPadding = getModalFooterBottomPadding(insets.bottom);
+
   return (
     <View className="flex-1 bg-black">
       <StatusBar hidden={true} />
@@ -196,6 +255,13 @@ export default function PrompterLiveScreen() {
           <View className="flex-1">
             {/* Info morceau sélectionné */}
             <View className="border-b border-white/10 p-5 bg-zinc-950/20">
+              <TouchableOpacity
+                onPress={() => setShowSourcePicker(true)}
+                activeOpacity={0.75}
+                className="mb-3 self-center rounded-full border border-white/20 bg-white/10 px-3 py-1.5"
+              >
+                <Text className="text-[11px] font-extrabold uppercase tracking-wider text-white">{sourceName} · Changer</Text>
+              </TouchableOpacity>
               <TouchableOpacity 
                 onPress={() => setShowSongPicker(true)}
                 activeOpacity={0.7}
@@ -213,6 +279,11 @@ export default function PrompterLiveScreen() {
                   <View className="bg-white/10 border border-white/10 px-2.5 py-1.5 rounded-lg">
                     <Text className="text-xs font-bold text-white/90">
                       {selectedSong.bpm ? `${selectedSong.bpm} BPM` : '— BPM'}
+                    </Text>
+                  </View>
+                  <View className="bg-white/10 border border-white/10 px-2.5 py-1.5 rounded-lg">
+                    <Text className="text-xs font-bold text-white/90" style={{ fontVariant: ['tabular-nums'] }}>
+                      {formatDuration(selectedSong.duration_seconds)}
                     </Text>
                   </View>
                   <View className="bg-white/10 border border-white/10 px-2.5 py-1.5 rounded-lg">
@@ -280,8 +351,8 @@ export default function PrompterLiveScreen() {
                 isUserScrolling.current = false;
                 scrollY.current = e.nativeEvent.contentOffset.y;
               }}
-              className="flex-1 p-6" 
-              contentContainerStyle={{ paddingBottom: 180 }} 
+              className="flex-1 p-6"
+              contentContainerStyle={{ paddingBottom: prompterContentBottomPadding }}
               showsVerticalScrollIndicator={false}
             >
               {renderFormattedLyrics(selectedSong.text_content)}
@@ -291,24 +362,111 @@ export default function PrompterLiveScreen() {
             </ScrollView>
 
             {/* Flèches de navigation en bas de page */}
-            <View className="absolute bottom-6 left-0 right-0 px-6 flex-row justify-between gap-6">
+            <View className="absolute left-0 right-0 px-6 flex-row justify-between gap-6" style={{ bottom: prompterControlsBottomOffset }}>
               <TouchableOpacity
+                disabled={!previousSong}
                 onPress={() => navigateSong('prev')}
                 activeOpacity={0.8}
-                className="flex-1 bg-zinc-900/95 border border-white/15 h-24 rounded-2xl items-center justify-center shadow-2xl"
+                className={previousButtonClassName}
               >
-                <Text className="text-white text-xl font-black uppercase tracking-wide">◀ Précédent</Text>
+                <BlurView
+                  intensity={previousSong ? 55 : 35}
+                  tint="dark"
+                  experimentalBlurMethod="dimezisBlurView"
+                  className="absolute inset-0"
+                />
+                <View className={`absolute inset-0 ${previousSong ? 'bg-zinc-950/45' : 'bg-zinc-950/75'}`} />
+                <Text className={`text-sm font-black uppercase tracking-wide ${previousSong ? 'text-zinc-300' : 'text-zinc-600'}`}>◀ Précédent</Text>
+                <Text className={`mt-1 text-center text-sm font-bold ${previousSong ? 'text-white' : 'text-zinc-500'}`} numberOfLines={1}>{previousSong?.title ?? 'Début'}</Text>
               </TouchableOpacity>
               <TouchableOpacity
+                disabled={!nextSong}
                 onPress={() => navigateSong('next')}
                 activeOpacity={0.8}
-                className="flex-1 bg-zinc-900/95 border border-white/15 h-24 rounded-2xl items-center justify-center shadow-2xl"
+                className={nextButtonClassName}
               >
-                <Text className="text-white text-xl font-black uppercase tracking-wide">Suivant ▶</Text>
+                <BlurView
+                  intensity={nextSong ? 55 : 35}
+                  tint="dark"
+                  experimentalBlurMethod="dimezisBlurView"
+                  className="absolute inset-0"
+                />
+                <View className={`absolute inset-0 ${nextSong ? 'bg-zinc-950/45' : 'bg-zinc-950/75'}`} />
+                <Text className={`text-sm font-black uppercase tracking-wide ${nextSong ? 'text-white' : 'text-zinc-500'}`}>Suivant ▶</Text>
+                <Text className={`mt-1 text-center text-sm font-bold ${nextSong ? 'text-white' : 'text-zinc-500'}`} numberOfLines={1}>{nextSong?.title ?? 'Fin'}</Text>
               </TouchableOpacity>
             </View>
           </View>
         )}
+
+        {!selectedSong && !!sourceName && (
+          <View className="flex-1 items-center justify-center px-8">
+            <Text className="mb-2 text-center text-xl font-extrabold text-white">Aucun morceau dans cette sélection</Text>
+            <Text className="mb-6 text-center text-sm leading-6 text-zinc-400">Choisissez une autre setlist ou l’ensemble du répertoire.</Text>
+            <TouchableOpacity onPress={() => setShowSourcePicker(true)} className="rounded-2xl bg-white px-6 py-4">
+              <Text className="font-black text-black">Changer de sélection</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        <Modal
+          visible={showSourcePicker}
+          animationType="fade"
+          onRequestClose={() => sourceName ? setShowSourcePicker(false) : router.back()}
+        >
+          <SafeAreaView className="flex-1 bg-black" edges={['top', 'bottom']}>
+            <View className="flex-1 px-6 pb-6 pt-5">
+              <View className="mb-7 flex-row items-start justify-between">
+                <View className="flex-1 pr-4">
+                  <Text className="text-3xl font-black tracking-tight text-white">Que joue-t-on ?</Text>
+                  <Text className="mt-2 text-sm leading-6 text-zinc-400">Choisissez une setlist préparée ou toutes les chansons du répertoire.</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => sourceName ? setShowSourcePicker(false) : router.back()}
+                  className="h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5"
+                >
+                  <Text className="text-xl text-white">×</Text>
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={{ gap: 12, paddingBottom: 24 }}>
+                <TouchableOpacity onPress={selectAllSongs} activeOpacity={0.78} className="rounded-3xl border border-white/25 bg-white/10 p-5">
+                  <View className="flex-row items-center justify-between gap-4">
+                    <View className="flex-1">
+                      <Text className="text-lg font-black text-white">Toutes les chansons</Text>
+                      <Text className="mt-1 text-sm text-zinc-400">Le répertoire complet, classé par titre</Text>
+                    </View>
+                    <Text className="text-2xl text-white">›</Text>
+                  </View>
+                </TouchableOpacity>
+
+                <Text className="px-1 pb-1 pt-4 text-xs font-black uppercase tracking-[2px] text-zinc-500">Setlists</Text>
+                {setlists.length === 0 ? (
+                  <View className="rounded-3xl border border-white/10 bg-white/5 p-5">
+                    <Text className="font-bold text-white">Aucune setlist</Text>
+                    <Text className="mt-1 text-sm leading-5 text-zinc-500">Vous pouvez tout de même lancer toutes les chansons.</Text>
+                  </View>
+                ) : setlists.map((setlist) => (
+                  <TouchableOpacity
+                    key={setlist.id}
+                    disabled={setlist.song_count === 0}
+                    onPress={() => selectSetlist(setlist)}
+                    activeOpacity={0.75}
+                    className={`rounded-3xl border border-white/10 bg-white/5 p-5 ${setlist.song_count === 0 ? 'opacity-40' : ''}`}
+                  >
+                    <View className="flex-row items-center justify-between gap-4">
+                      <View className="flex-1">
+                        <Text className="text-base font-extrabold text-white">{setlist.name}</Text>
+                        <Text className="mt-1 text-xs text-zinc-500">{setlist.song_count} {setlist.song_count === 1 ? 'morceau' : 'morceaux'} · {formatDuration(setlist.total_duration)}</Text>
+                      </View>
+                      <Text className="text-xl text-zinc-400">›</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          </SafeAreaView>
+        </Modal>
 
         {/* Modal Sélecteur de morceau */}
         <Modal
@@ -321,10 +479,12 @@ export default function PrompterLiveScreen() {
             activeOpacity={1}
             onPress={() => setShowSongPicker(false)}
             className="flex-1 bg-black/60 justify-end"
+            style={{ paddingBottom: bottomSheetOffset }}
           >
             <TouchableOpacity
               activeOpacity={1}
               className="bg-zinc-950 rounded-t-3xl p-6 border-t border-white/10 max-h-[70%]"
+              style={{ paddingBottom: bottomSheetFooterPadding }}
             >
               <View className="flex-row justify-between items-center mb-6">
                 <Text className="text-lg font-bold text-white">Sélectionner un morceau</Text>
@@ -333,7 +493,7 @@ export default function PrompterLiveScreen() {
                 </TouchableOpacity>
               </View>
 
-              <ScrollView contentContainerStyle={{ gap: 10 }}>
+              <ScrollView contentContainerStyle={{ gap: 10, paddingBottom: 12 }}>
                 {songs.map((song) => {
                   const isSelected = selectedSong?.id === song.id;
                   if (isSelected) {

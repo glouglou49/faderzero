@@ -2,7 +2,11 @@ import React, { useState, useCallback } from 'react';
 import { View, Text, FlatList, TouchableOpacity, TextInput, Modal } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  getFloatingTabBarContentPadding,
+  getModalBottomOffset,
+} from '../../constants/navigation';
 
 export type SongStatus = 'Idee' | 'En cours' | 'Pret';
 
@@ -13,6 +17,7 @@ export interface Song {
   bpm: number | null;
   key: string | null;
   text_content: string;
+  duration_seconds: number;
   updated_at: string;
 }
 
@@ -35,6 +40,7 @@ function generateUUID(): string {
 export default function RepertoireScreen() {
   const db = useSQLiteContext();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [songs, setSongs] = useState<Song[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -106,6 +112,8 @@ export default function RepertoireScreen() {
   const filteredSongs = songs.filter(song =>
     (song.title || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
+  const bottomContentPadding = getFloatingTabBarContentPadding(insets.bottom);
+  const centeredModalBottomOffset = getModalBottomOffset(insets.bottom);
 
   // Formatter la date de mise à jour
   const formatDate = (isoString: string) => {
@@ -126,8 +134,8 @@ export default function RepertoireScreen() {
     switch (status) {
       case 'Idee':
         return (
-          <View className="bg-amber-950/40 border border-amber-900/50 px-2.5 py-0.5 rounded-full">
-            <Text className="text-xs font-semibold text-amber-400">Idée</Text>
+          <View className="bg-indigo-950/40 border border-indigo-900/50 px-2.5 py-0.5 rounded-full">
+            <Text className="text-xs font-semibold text-indigo-400">Idée</Text>
           </View>
         );
       case 'En cours':
@@ -223,7 +231,7 @@ export default function RepertoireScreen() {
             data={filteredSongs}
             keyExtractor={item => item.id}
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ paddingBottom: 110 }}
+            contentContainerStyle={{ paddingBottom: bottomContentPadding }}
             renderItem={({ item }) => (
               <TouchableOpacity
                 onPress={() => router.push(`/song/${item.id}`)}
@@ -239,7 +247,7 @@ export default function RepertoireScreen() {
                     {/* BPM & Key */}
                     {(item.bpm !== null || item.key) ? (
                       <Text className="text-xs font-semibold text-zinc-400">
-                        {item.bpm ? `${item.bpm} BPM` : '— BPM'} • {item.key || '— Ton'}
+                        {item.bpm ? `${item.bpm} BPM` : '— BPM'} • {item.key || '— Ton'} • {String(Math.floor((item.duration_seconds || 0) / 60)).padStart(2, '0')}:{String((item.duration_seconds || 0) % 60).padStart(2, '0')}
                       </Text>
                     ) : (
                       <Text className="text-xs font-semibold text-zinc-500">
@@ -274,7 +282,7 @@ export default function RepertoireScreen() {
         animationType="fade"
         onRequestClose={() => setShowCreateModal(false)}
       >
-        <View className="flex-1 bg-black/60 justify-center items-center px-6">
+        <View className="flex-1 bg-black/60 justify-center items-center px-6" style={{ paddingBottom: centeredModalBottomOffset }}>
           <View className="bg-zinc-900 border border-white/10 rounded-3xl p-6 w-full max-w-sm shadow-2xl">
             <Text className="text-lg font-bold text-white mb-4">
               Nouvelle Chanson

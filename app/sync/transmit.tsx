@@ -16,6 +16,7 @@ interface Song {
   bpm: number | null;
   key: string | null;
   text_content: string;
+  duration_seconds: number;
   updated_at: string;
 }
 

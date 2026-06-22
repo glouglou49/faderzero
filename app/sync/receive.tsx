@@ -17,6 +17,7 @@ interface Song {
   lyrics?: string;
   tempo?: number | null;
   tone?: string | null;
+  duration_seconds?: number;
   updated_at?: string;
 }
 
@@ -85,8 +86,9 @@ export default function ReceiveScreen() {
       
       const key = receivedData.key || receivedData.tone || null;
       const status = receivedData.status || 'Idee';
+      const durationSeconds = Math.max(0, Number(receivedData.duration_seconds) || 0);
 
-      const songData = { title, textContent, bpm, key, status };
+      const songData = { title, textContent, bpm, key, status, durationSeconds };
 
       // 4. Vérifier si une chanson avec le même titre existe déjà (insensible à la casse)
       const existingSong = await db.getFirstAsync<{ id: string }>(
@@ -153,18 +155,20 @@ export default function ReceiveScreen() {
       bpm: number | null;
       key: string | null;
       status: string;
+      durationSeconds: number;
     }
   ) => {
     try {
       const now = new Date().toISOString();
       await db.runAsync(
-        'UPDATE songs SET title = ?, status = ?, bpm = ?, key = ?, text_content = ?, updated_at = ? WHERE id = ?',
+        'UPDATE songs SET title = ?, status = ?, bpm = ?, key = ?, text_content = ?, duration_seconds = ?, updated_at = ? WHERE id = ?',
         [
           songData.title,
           songData.status,
           songData.bpm,
           songData.key,
           songData.textContent,
+          songData.durationSeconds,
           now,
           id,
         ]
@@ -192,13 +196,14 @@ export default function ReceiveScreen() {
     bpm: number | null;
     key: string | null;
     status: string;
+    durationSeconds: number;
   }) => {
     try {
       const newId = generateUUID();
       const now = new Date().toISOString();
 
       await db.runAsync(
-        'INSERT INTO songs (id, title, status, bpm, key, text_content, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO songs (id, title, status, bpm, key, text_content, duration_seconds, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
         [
           newId,
           songData.title,
@@ -206,6 +211,7 @@ export default function ReceiveScreen() {
           songData.bpm,
           songData.key,
           songData.textContent,
+          songData.durationSeconds,
           now,
         ]
       );

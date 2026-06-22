@@ -5,6 +5,12 @@ import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { IconSymbol } from './ui/icon-symbol';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  FLOATING_TAB_BAR_FALLBACK_BOTTOM_INSET,
+  getFloatingTabBarHeight,
+  getModalBottomOffset,
+  getModalFooterBottomPadding,
+} from '../constants/navigation';
 
 export function CustomTabBar({ state, navigation }: BottomTabBarProps) {
   const router = useRouter();
@@ -12,11 +18,15 @@ export function CustomTabBar({ state, navigation }: BottomTabBarProps) {
   const [showLiveMenu, setShowLiveMenu] = useState(false);
 
   const homeRoute = state.routes.find((r) => r.name === 'repertoire');
+  const setlistsRoute = state.routes.find((r) => r.name === 'setlists');
   const menuRoute = state.routes.find((r) => r.name === 'profile');
 
   const bottomInset = insets.bottom;
-  const containerHeight = 76 + bottomInset;
-  const paddingBottom = bottomInset > 0 ? bottomInset : 12;
+  const containerHeight = getFloatingTabBarHeight(bottomInset);
+  const paddingBottom =
+    bottomInset > 0 ? bottomInset : FLOATING_TAB_BAR_FALLBACK_BOTTOM_INSET;
+  const modalBottomOffset = getModalBottomOffset(bottomInset);
+  const modalFooterBottomPadding = getModalFooterBottomPadding(bottomInset);
 
   const renderTab = (route: typeof homeRoute, iconName: any, label: string, isFocused: boolean) => {
     if (!route) return null;
@@ -73,6 +83,7 @@ export function CustomTabBar({ state, navigation }: BottomTabBarProps) {
   };
 
   const isHomeFocused = state.routes[state.index]?.name === 'repertoire';
+  const isSetlistsFocused = state.routes[state.index]?.name === 'setlists';
   const isMenuFocused = state.routes[state.index]?.name === 'profile';
 
   return (
@@ -81,6 +92,8 @@ export function CustomTabBar({ state, navigation }: BottomTabBarProps) {
       <View style={[styles.navBar, { paddingBottom: paddingBottom }]}>
         {/* Left Tab: Home */}
         {renderTab(homeRoute, 'house.fill', 'Home', isHomeFocused)}
+
+        {renderTab(setlistsRoute, 'music.note.list', 'Setlists', isSetlistsFocused)}
 
         {/* Center Tab: Live (Bouton aligné) */}
         <TouchableOpacity
@@ -111,11 +124,12 @@ export function CustomTabBar({ state, navigation }: BottomTabBarProps) {
           activeOpacity={1}
           onPress={() => setShowLiveMenu(false)}
           className="flex-1 bg-black/60 justify-end"
+          style={{ paddingBottom: modalBottomOffset }}
         >
           <TouchableOpacity
             activeOpacity={1}
             className="bg-zinc-950 border-t border-white/10 rounded-t-[32px] p-6"
-            style={{ paddingBottom: bottomInset > 0 ? bottomInset + 16 : 32 }}
+            style={{ paddingBottom: modalFooterBottomPadding }}
           >
             <View className="items-center mb-6">
               <View className="w-12 h-1 bg-zinc-800 rounded-full mb-4" />
