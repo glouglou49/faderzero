@@ -38,6 +38,9 @@ async function initializeDatabase(db: SQLiteDatabase) {
         position INTEGER,
         segue INTEGER DEFAULT 0,
         annotation TEXT,
+        pdf_show_bpm INTEGER DEFAULT 0,
+        pdf_show_key INTEGER DEFAULT 0,
+        pdf_show_duration INTEGER DEFAULT 0,
         PRIMARY KEY (setlist_id, song_id)
       );
 
@@ -56,6 +59,15 @@ async function initializeDatabase(db: SQLiteDatabase) {
     }
     if (!setlistSongColumns.some((column) => column.name === 'annotation')) {
       await db.execAsync('ALTER TABLE setlist_songs ADD COLUMN annotation TEXT;');
+    }
+    if (!setlistSongColumns.some((column) => column.name === 'pdf_show_bpm')) {
+      await db.execAsync('ALTER TABLE setlist_songs ADD COLUMN pdf_show_bpm INTEGER DEFAULT 0;');
+    }
+    if (!setlistSongColumns.some((column) => column.name === 'pdf_show_key')) {
+      await db.execAsync('ALTER TABLE setlist_songs ADD COLUMN pdf_show_key INTEGER DEFAULT 0;');
+    }
+    if (!setlistSongColumns.some((column) => column.name === 'pdf_show_duration')) {
+      await db.execAsync('ALTER TABLE setlist_songs ADD COLUMN pdf_show_duration INTEGER DEFAULT 0;');
     }
     console.log('[SQLite] Table songs et transitions initialisées avec succès.');
   } catch (error) {

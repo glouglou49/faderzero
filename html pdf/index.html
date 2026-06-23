@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SET LISTE - 15 CHANSONS</title>
+    <!-- Importation de la police "Inter" pour une lisibilité et clarté maximales -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <!-- Tailwind CSS pour la mise en page générale -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Styles de simulation papier */
+        body {
+            background-color: #e2e8f0; /* Fond gris de bureau */
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: #000000; /* Noir pur pour contraste maximal */
+        }
+
+        /* Cadre simulant une feuille A4 standard */
+        .a4-page {
+            width: 210mm;
+            height: 297mm;
+            background-color: #ffffff;
+            border: 1px solid #d6d3d1; /* Cadre de la feuille */
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08), 0 3px 6px rgba(0, 0, 0, 0.04);
+            padding: 20mm; /* Marges d'impression standard */
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            box-sizing: border-box;
+            position: relative;
+        }
+
+        /* Gestion de la réactivité pour les petits écrans (mobile) */
+        @media (max-width: 210mm) {
+            body {
+                background-color: #ffffff;
+                padding: 0;
+            }
+            .a4-page {
+                width: 100vw;
+                height: auto;
+                min-height: 100vh;
+                border: none;
+                box-shadow: none;
+                padding: 1.5rem;
+            }
+        }
+
+        /* Masque les contours bleus de sélection lors de la saisie */
+        [contenteditable="true"]:focus {
+            outline: none;
+            background-color: #f8fafc;
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body class="py-8 md:py-16 flex justify-center items-center">
+
+    <!-- Feuille A4 simulée avec son cadre -->
+    <div class="a4-page">
+        
+        <!-- Haut de la page -->
+        <div>
+
+
+            <!-- Titre principal discret (à la taille des chansons : text-base) -->
+            <div class="mb-6">
+                <h1 contenteditable="true" class="text-base font-extrabold tracking-widest text-stone-900 py-1 uppercase focus:bg-slate-50">
+                    SET LISTE
+                </h1>
+            </div>
+
+            <!-- Conteneur de la liste de chansons -->
+            <div class="relative pl-16 pr-4 py-1">
+                
+                <!-- SVG de la liaison arrondie en GRAS entre chanson 1 et chanson 2 -->
+                <svg class="absolute left-0 top-0 w-16 h-[84px] pointer-events-none" viewBox="0 0 64 84">
+                    <defs>
+                        <!-- Pointe de la flèche plus grande et robuste -->
+                        <marker id="classic-arrowhead-bold" markerWidth="8" markerHeight="8" refX="2" refY="4" orient="auto">
+                            <polygon points="0 1, 6 4, 0 7" fill="#1c1917" />
+                        </marker>
+                    </defs>
+                    
+                    <!-- Courbe de Bézier en gras -->
+                    <path 
+                        d="M 50,18 C 15,18 15,66 43,66" 
+                        fill="none" 
+                        stroke="#1c1917" 
+                        stroke-width="3.5" 
+                        stroke-linecap="round"
+                        marker-end="url(#classic-arrowhead-bold)" 
+                    />
+                </svg>
+
+                <!-- Liste des 15 morceaux éditables (en gras, taille text-xl, forcé en majuscules) -->
+                <div class="space-y-3 text-xl font-black tracking-wide text-black uppercase">
+                    
+                    <!-- Chanson 1 (Départ de la flèche) -->
+                    <div class="relative h-9 flex items-center">
+                        <span contenteditable="true" class="py-1 block w-full truncate focus:bg-slate-50" title="Double-cliquez pour éditer le titre complet">L'AVENTURIER ET SES COMPAGNONS DE ROUTE DE L'ESPACE</span>
+                        <!-- L'annotation est à top-[42px] (milieu exact de l'espace vide) et centrée verticalement grâce à translateY-1/2 et flex items-center -->
+                        <span contenteditable="true" class="absolute left-0 top-[42px] -translate-y-1/2 h-5 flex items-center text-[11px] font-extrabold tracking-widest text-stone-400 italic focus:bg-slate-50 uppercase z-10 truncate max-w-full">[ENCHAÎNÉ DIRECT SANS PAUSE SYMPHONIQUE]</span>
+                    </div>
+
+                    <!-- Chanson 2 (Arrivée de la flèche) -->
+                    <div class="relative h-9 flex items-center">
+                        <span contenteditable="true" class="py-1 block w-full truncate focus:bg-slate-50">LA CORRIDA</span>
+                        <span contenteditable="true" class="absolute left-0 top-[42px] -translate-y-1/2 h-5 flex items-center text-[11px] font-extrabold tracking-widest text-stone-400 italic focus:bg-slate-50 uppercase z-10 truncate max-w-full">[INTRO CLAVIER / SOLO]</span>
+                    </div>
+
+                    <!-- Chanson 3 -->
+                    <div class="relative h-9 flex items-center">
+                        <span contenteditable="true" class="py-1 block w-full truncate focus:bg-slate-50">ALLUMER LE FEU</span>
+                        <span contenteditable="true" class="absolute left-0 top-[42px] -translate-y-1/2 h-5 flex items-center text-[11px] font-extrabold tracking-widest text-stone-400 italic focus:bg-slate-50 uppercase z-10 truncate max-w-full">[CHANGEMENT DE GUITARE ÉLECTRIQUE]</span>
+                    </div>
+
+                    <!-- Chanson 4 -->
+                    <div class="relative h-9 flex items-center">
+                        <span contenteditable="true" class="py-1 block w-full truncate focus:bg-slate-50">HOTEL CALIFORNIA</span>
+                        <span contenteditable="true" class="absolute left-0 top-[42px] -translate-y-1/2 h-5 flex items-center text-[11px] font-extrabold tracking-widest text-stone-400 italic focus:bg-slate-50 uppercase z-10 truncate max-w-full">[DÉBUT DOUX - ACOUSTIQUE]</span>
+                    </div>
+
+                    <!-- Chanson 5 -->
+                    <div class="relative h-9 flex items-center">
+                        <span contenteditable="true" class="py-1 block w-full truncate focus:bg-slate-50">MISTRAL GAGNANT</span>
+                        <span contenteditable="true" class="absolute left-0 top-[42px] -translate-y-1/2 h-5 flex items-center text-[11px] font-extrabold tracking-widest text-stone-400 italic focus:bg-slate-50 uppercase z-10 truncate max-w-full">[PIANO / VOIX SOLO]</span>
+                    </div>
+
+                    <!-- Chanson 6 -->
+                    <div class="relative h-9 flex items-center">
+                        <span contenteditable="true" class="py-1 block w-full truncate focus:bg-slate-50">BILLIE JEAN</span>
+                        <span contenteditable="true" class="absolute left-0 top-[42px] -translate-y-1/2 h-5 flex items-center text-[11px] font-extrabold tracking-widest text-stone-400 italic focus:bg-slate-50 uppercase z-10 truncate max-w-full">[LANCER LA SÉQUENCE RYTHMIQUE]</span>
+                    </div>
+
+                    <!-- Chanson 7 -->
+                    <div class="relative h-9 flex items-center">
+                        <span contenteditable="true" class="py-1 block w-full truncate focus:bg-slate-50">ÇA (C'EST VRAIMENT TOI)</span>
+                        <span contenteditable="true" class="absolute left-0 top-[42px] -translate-y-1/2 h-5 flex items-center text-[11px] font-extrabold tracking-widest text-stone-400 italic focus:bg-slate-50 uppercase z-10 truncate max-w-full">[SOLO BASSE & RYTHME]</span>
+                    </div>
+
+                    <!-- Chanson 8 -->
+                    <div class="relative h-9 flex items-center">
+                        <span contenteditable="true" class="py-1 block w-full truncate focus:bg-slate-50">JE TE PROMETS</span>
+                        <span contenteditable="true" class="absolute left-0 top-[42px] -translate-y-1/2 h-5 flex items-center text-[11px] font-extrabold tracking-widest text-stone-400 italic focus:bg-slate-50 uppercase z-10 truncate max-w-full">[CHŒURS PUISSANTS SUR REFRAIN]</span>
+                    </div>
+
+                    <!-- Chanson 9 -->
+                    <div class="relative h-9 flex items-center">
+                        <span contenteditable="true" class="py-1 block w-full truncate focus:bg-slate-50">LES DÉMONS DE MINUIT</span>
+                        <span contenteditable="true" class="absolute left-0 top-[42px] -translate-y-1/2 h-5 flex items-center text-[11px] font-extrabold tracking-widest text-stone-400 italic focus:bg-slate-50 uppercase z-10 truncate max-w-full">[ENCHAÎNEMENT SANS INTERRUPTION]</span>
+                    </div>
+
+                    <!-- Chanson 10 -->
+                    <div class="relative h-9 flex items-center">
+                        <span contenteditable="true" class="py-1 block w-full truncate focus:bg-slate-50">ZOMBIE</span>
+                        <span contenteditable="true" class="absolute left-0 top-[42px] -translate-y-1/2 h-5 flex items-center text-[11px] font-extrabold tracking-widest text-stone-400 italic focus:bg-slate-50 uppercase z-10 truncate max-w-full">[ACTIVER DISTORSION REFRAIN]</span>
+                    </div>
+
+                    <!-- Chanson 11 -->
+                    <div class="relative h-9 flex items-center">
+                        <span contenteditable="true" class="py-1 block w-full truncate focus:bg-slate-50">PLACE DES GRANDS HOMMES</span>
+                        <span contenteditable="true" class="absolute left-0 top-[42px] -translate-y-1/2 h-5 flex items-center text-[11px] font-extrabold tracking-widest text-stone-400 italic focus:bg-slate-50 uppercase z-10 truncate max-w-full">[PARTICIPATION PUBLIC - MICRO SCÈNE]</span>
+                    </div>
+
+                    <!-- Chanson 12 -->
+                    <div class="relative h-9 flex items-center">
+                        <span contenteditable="true" class="py-1 block w-full truncate focus:bg-slate-50">POUR QUE TU M'AIMES ENCORE</span>
+                        <span contenteditable="true" class="absolute left-0 top-[42px] -translate-y-1/2 h-5 flex items-center text-[11px] font-extrabold tracking-widest text-stone-400 italic focus:bg-slate-50 uppercase z-10 truncate max-w-full">[CAPO 1 GUITARE SEULE]</span>
+                    </div>
+
+                    <!-- Chanson 13 -->
+                    <div class="relative h-9 flex items-center">
+                        <span contenteditable="true" class="py-1 block w-full truncate focus:bg-slate-50">ENVOLE-MOI</span>
+                        <span contenteditable="true" class="absolute left-0 top-[42px] -translate-y-1/2 h-5 flex items-center text-[11px] font-extrabold tracking-widest text-stone-400 italic focus:bg-slate-50 uppercase z-10 truncate max-w-full">[SOLO FINAL MONTE EN INTENSITÉ]</span>
+                    </div>
+
+                    <!-- Chanson 14 -->
+                    <div class="relative h-9 flex items-center">
+                        <span contenteditable="true" class="py-1 block w-full truncate focus:bg-stone-50">LE SUD</span>
+                        <span contenteditable="true" class="absolute left-0 top-[42px] -translate-y-1/2 h-5 flex items-center text-[11px] font-extrabold tracking-widest text-stone-400 italic focus:bg-slate-50 uppercase z-10 truncate max-w-full">[UPTEMPO - RYTHME SOUTENU]</span>
+                    </div>
+
+                    <!-- Chanson 15 -->
+                    <div class="relative h-9 flex items-center">
+                        <span contenteditable="true" class="py-1 block w-full truncate focus:bg-stone-50">COMME D'HABITUDE</span>
+                        <span contenteditable="true" class="absolute left-0 top-[42px] -translate-y-1/2 h-5 flex items-center text-[11px] font-extrabold tracking-widest text-stone-400 italic focus:bg-slate-50 uppercase z-10 truncate max-w-full">[OUTRO / SALUT DES MUSICIENS]</span>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+
+</body>
+</html>

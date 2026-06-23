@@ -17,7 +17,7 @@ export function CustomTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const [showLiveMenu, setShowLiveMenu] = useState(false);
 
-  const homeRoute = state.routes.find((r) => r.name === 'repertoire');
+  const homeRoute = state.routes.find((r) => r.name === 'home');
   const setlistsRoute = state.routes.find((r) => r.name === 'setlists');
   const menuRoute = state.routes.find((r) => r.name === 'profile');
 
@@ -82,7 +82,7 @@ export function CustomTabBar({ state, navigation }: BottomTabBarProps) {
     }
   };
 
-  const isHomeFocused = state.routes[state.index]?.name === 'repertoire';
+  const isHomeFocused = state.routes[state.index]?.name === 'home';
   const isSetlistsFocused = state.routes[state.index]?.name === 'setlists';
   const isMenuFocused = state.routes[state.index]?.name === 'profile';
 

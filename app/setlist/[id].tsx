@@ -1,6 +1,7 @@
+import { Ionicons } from '@expo/vector-icons';
+import { File } from 'expo-file-system';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -28,12 +29,95 @@ interface SetlistSong extends Song {
   position: number;
   segue?: number;
   annotation?: string | null;
+  pdf_show_bpm?: number;
+  pdf_show_key?: number;
+  pdf_show_duration?: number;
 }
 
 const singleParam = (value: string | string[] | undefined) => Array.isArray(value) ? value[0] : value;
 const formatDuration = (seconds: number) => {
   const safeSeconds = Math.max(0, seconds || 0);
   return `${String(Math.floor(safeSeconds / 60)).padStart(2, '0')}:${String(safeSeconds % 60).padStart(2, '0')}`;
+};
+
+const escapeHTML = (value: string) => value
+  .replaceAll('&', '&amp;')
+  .replaceAll('<', '&lt;')
+  .replaceAll('>', '&gt;')
+  .replaceAll('"', '&quot;')
+  .replaceAll("'", '&#039;');
+
+const formatPdfDate = (date: Date) => {
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}-${month}-${year}`;
+};
+
+const sanitizePdfFileName = (value: string) => value
+  .trim()
+  .replace(/[<>:"/\\|?*\u0000-\u001F]/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+const getTransitionDetailParts = (song: SetlistSong) => {
+  const parts: string[] = [];
+  if (song.pdf_show_bpm === 1 && song.bpm) {
+    parts.push(`${song.bpm} BPM`);
+  }
+  if (song.pdf_show_key === 1 && song.key) {
+    parts.push(song.key);
+  }
+  if (song.pdf_show_duration === 1) {
+    parts.push(formatDuration(song.duration_seconds));
+  }
+
+  return parts;
+};
+
+const getSongComment = (song: SetlistSong) => song.annotation?.trim() || '';
+const getSongNotesLine = (song: SetlistSong) => {
+  const parts: string[] = [];
+  const comment = getSongComment(song);
+  const metaParts = getTransitionDetailParts(song);
+
+  if (comment) {
+    parts.push(`[${comment}]`);
+  }
+  if (metaParts.length > 0) {
+    parts.push(metaParts.join(' · '));
+  }
+
+  return parts.join(' · ');
+};
+
+const PDF_PAGE_WIDTH_MM = 210;
+const PDF_PAGE_HEIGHT_MM = 297;
+const PDF_PAGE_MARGIN_MM = 3;
+const PDF_MM_TO_PX = 96 / 25.4;
+const PDF_HEADER_BOTTOM_MARGIN = 8;
+const PDF_CONTENT_WIDTH = 312;
+const PDF_TITLE_FONT_SIZE = 12;
+const PDF_TITLE_LINE_HEIGHT = 16;
+const PDF_SONG_TITLE_FONT_SIZE = 16;
+const PDF_SONG_TITLE_LINE_HEIGHT = 24;
+const PDF_SONG_META_FONT_SIZE = 7;
+const PDF_SONG_META_LINE_HEIGHT = 9;
+const PDF_SONG_NOTE_FONT_SIZE = 7;
+const PDF_SONG_NOTE_LINE_HEIGHT = 9;
+const PDF_SONG_ENTRY_HEIGHT = 44;
+const PDF_SONGS_LIST_LEFT_PADDING = 20;
+const PDF_TRANSITION_ARROW_WIDTH = 20;
+const PDF_TRANSITION_ARROW_HEIGHT = 46;
+const PDF_MIN_CONTENT_SCALE = 1.85;
+const PDF_MEDIUM_CONTENT_SCALE = 2.1;
+const PDF_MAX_CONTENT_SCALE = 2.35;
+const PDF_HEADER_HEIGHT_PX = PDF_TITLE_LINE_HEIGHT + PDF_HEADER_BOTTOM_MARGIN;
+
+const getPdfContentScale = (songCount: number) => {
+  if (songCount <= 8) return PDF_MAX_CONTENT_SCALE;
+  if (songCount <= 12) return PDF_MEDIUM_CONTENT_SCALE;
+  return PDF_MIN_CONTENT_SCALE;
 };
 
 export default function SetlistDetailScreen() {
@@ -55,6 +139,9 @@ export default function SetlistDetailScreen() {
   const [editingSong, setEditingSong] = useState<SetlistSong | null>(null);
   const [modalSegue, setModalSegue] = useState(false);
   const [modalAnnotation, setModalAnnotation] = useState('');
+  const [modalShowBpm, setModalShowBpm] = useState(false);
+  const [modalShowKey, setModalShowKey] = useState(false);
+  const [modalShowDuration, setModalShowDuration] = useState(false);
 
   const loadSetlist = useCallback(async () => {
     if (!setlistId) return;
@@ -62,7 +149,18 @@ export default function SetlistDetailScreen() {
       const [setlistRow, songRows] = await Promise.all([
         db.getFirstAsync<Setlist>('SELECT * FROM setlists WHERE id = ?', [setlistId]),
         db.getAllAsync<SetlistSong>(`
-          SELECT s.id, s.title, s.bpm, s.key, s.duration_seconds, ss.position, ss.segue, ss.annotation
+          SELECT
+            s.id,
+            s.title,
+            s.bpm,
+            s.key,
+            s.duration_seconds,
+            ss.position,
+            ss.segue,
+            ss.annotation,
+            ss.pdf_show_bpm,
+            ss.pdf_show_key,
+            ss.pdf_show_duration
           FROM setlist_songs ss
           INNER JOIN songs s ON s.id = ss.song_id
           WHERE ss.setlist_id = ?
@@ -191,6 +289,9 @@ export default function SetlistDetailScreen() {
     setEditingSong(song);
     setModalSegue(song.segue === 1);
     setModalAnnotation(song.annotation || '');
+    setModalShowBpm(song.pdf_show_bpm === 1);
+    setModalShowKey(song.pdf_show_key === 1);
+    setModalShowDuration(song.pdf_show_duration === 1);
     setShowTransitionModal(true);
   };
 
@@ -199,9 +300,14 @@ export default function SetlistDetailScreen() {
     try {
       const segueValue = modalSegue ? 1 : 0;
       const annotationValue = modalAnnotation.trim() || null;
+      const showBpmValue = modalShowBpm ? 1 : 0;
+      const showKeyValue = modalShowKey ? 1 : 0;
+      const showDurationValue = modalShowDuration ? 1 : 0;
       await db.runAsync(
-        'UPDATE setlist_songs SET segue = ?, annotation = ? WHERE setlist_id = ? AND song_id = ?',
-        [segueValue, annotationValue, setlistId, editingSong.id]
+        `UPDATE setlist_songs
+         SET segue = ?, annotation = ?, pdf_show_bpm = ?, pdf_show_key = ?, pdf_show_duration = ?
+         WHERE setlist_id = ? AND song_id = ?`,
+        [segueValue, annotationValue, showBpmValue, showKeyValue, showDurationValue, setlistId, editingSong.id]
       );
       setShowTransitionModal(false);
       await loadSetlist();
@@ -212,156 +318,193 @@ export default function SetlistDetailScreen() {
 
   const generateHTML = () => {
     if (!setlist) return '';
-    const formattedDate = new Date(setlist.created_at).toLocaleDateString('fr-FR', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    });
+    const pdfContentScale = getPdfContentScale(songs.length);
+    const pdfInnerPageHeightPx = ((PDF_PAGE_HEIGHT_MM - (PDF_PAGE_MARGIN_MM * 2)) * PDF_MM_TO_PX);
+    const pdfScaledContentHeightPx = Math.max(0, (pdfInnerPageHeightPx - PDF_HEADER_HEIGHT_PX) / pdfContentScale);
+    const pdfMaxSongsPerPage = Math.max(1, Math.floor(pdfScaledContentHeightPx / PDF_SONG_ENTRY_HEIGHT));
+    const renderSongEntryHTML = (song: SetlistSong, globalIndex: number) => {
+      const isLast = globalIndex === songs.length - 1;
+      const notesLine = getSongNotesLine(song);
+      const metaParts = notesLine ? [notesLine] : [];
+      const commentText = '';
+      const metaText = metaParts.length > 0 ? metaParts.join(' · ') : '';
+      const arrowMarkerId = `transition-arrow-${globalIndex}`;
 
-    const songRowsHTML = songs.map((song, index) => {
-      const isLast = index === songs.length - 1;
-      const hasTransition = !isLast && (song.segue === 1 || song.annotation);
+      return `
+        <div class="song-entry">
+          ${song.segue === 1 && !isLast ? `
+            <svg class="transition-arrow" viewBox="0 0 64 84" aria-hidden="true">
+              <defs>
+                <marker id="${arrowMarkerId}" markerWidth="8" markerHeight="8" refX="2" refY="4" orient="auto">
+                  <polygon points="0 1, 6 4, 0 7" fill="#1c1917" />
+                </marker>
+              </defs>
+              <path
+                d="M 50,18 C 15,18 15,66 43,66"
+                fill="none"
+                stroke="#1c1917"
+                stroke-width="3.5"
+                stroke-linecap="round"
+                marker-end="url(#${arrowMarkerId})"
+              />
+            </svg>
+          ` : ''}
+          ${metaText ? `<div class="song-meta">${escapeHTML(metaText)}</div>` : ''}
+          ${commentText ? `<div class="song-comment">[${escapeHTML(commentText)}]</div>` : ''}
+          <div class="song-title">${escapeHTML(song.title || 'Sans titre')}</div>
+        </div>
+      `;
+    };
 
-      const songHTML = `
-        <div class="song-row">
-          <div class="song-number">${index + 1}</div>
-          <div class="song-details">
-            <div class="song-title">${song.title || 'Sans titre'}</div>
-            <div class="song-meta">
-              ${song.bpm ? `<span>${song.bpm} BPM</span>` : ''}
-              ${song.key ? `<span> · Ton : ${song.key}</span>` : ''}
-              <span> · ${formatDuration(song.duration_seconds)}</span>
+    const songPages: SetlistSong[][] = [];
+    for (let index = 0; index < songs.length; index += pdfMaxSongsPerPage) {
+      songPages.push(songs.slice(index, index + pdfMaxSongsPerPage));
+    }
+
+    const pagesHTML = songPages.map((pageSongs, pageIndex) => {
+      const songRowsHTML = pageSongs
+        .map((song, songIndex) => renderSongEntryHTML(song, (pageIndex * pdfMaxSongsPerPage) + songIndex))
+        .join('');
+
+      return `
+        <div class="page">
+          <div class="header">
+            <h1 class="title">${escapeHTML(setlist.name)}</h1>
+          </div>
+          <div class="songs-content">
+            <div class="songs-list">
+              ${songRowsHTML}
             </div>
           </div>
         </div>
       `;
-
-      let transitionHTML = '';
-      if (hasTransition) {
-        transitionHTML = `
-          <div class="transition-row">
-            <div class="transition-indicator-col">
-              ${song.segue === 1 ? `
-                <svg width="24" height="32" viewBox="0 0 30 40">
-                  <path d="M 25,2 C 2,2 2,38 25,38" stroke="#4f46e5" stroke-width="3" fill="none" stroke-linecap="round"/>
-                  <path d="M 17,32 L 25,38 L 17,44" stroke="#4f46e5" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-              ` : ''}
-            </div>
-            <div class="transition-content-col">
-              ${song.annotation ? `<span class="annotation-text">${song.annotation}</span>` : ''}
-            </div>
-          </div>
-        `;
-      }
-
-      return songHTML + transitionHTML;
     }).join('');
 
     return `
       <!DOCTYPE html>
-      <html>
+      <html lang="fr">
       <head>
         <meta charset="utf-8">
-        <title>${setlist.name}</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>${escapeHTML(setlist?.name ?? '')}</title>
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
         <style>
+          @page {
+            size: ${PDF_PAGE_WIDTH_MM}mm ${PDF_PAGE_HEIGHT_MM}mm;
+            margin: 0;
+          }
+          * {
+            box-sizing: border-box;
+          }
+          html,
           body {
-            font-family: 'Inter', -apple-system, sans-serif;
-            color: #1f2937;
-            margin: 40px;
+            width: ${PDF_PAGE_WIDTH_MM}mm;
+            min-height: ${PDF_PAGE_HEIGHT_MM}mm;
+            margin: 0;
             padding: 0;
             background-color: #ffffff;
           }
+          body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: #000000;
+          }
+          .page {
+            width: ${PDF_PAGE_WIDTH_MM}mm;
+            min-height: ${PDF_PAGE_HEIGHT_MM}mm;
+            padding: ${PDF_PAGE_MARGIN_MM}mm;
+            overflow: hidden;
+            page-break-after: always;
+            break-after: page;
+          }
+          .page:last-child {
+            page-break-after: auto;
+            break-after: auto;
+          }
+          .songs-content {
+            width: calc(100% / ${pdfContentScale});
+            transform: scale(${pdfContentScale});
+            transform-origin: top left;
+          }
           .header {
-            border-bottom: 2px solid #e5e7eb;
-            padding-bottom: 20px;
-            margin-bottom: 30px;
+            margin-bottom: ${PDF_HEADER_BOTTOM_MARGIN}px;
           }
           .title {
-            font-size: 32px;
+            overflow: hidden;
+            margin: 0;
+            color: #1c1917;
+            font-size: ${PDF_TITLE_FONT_SIZE}px;
             font-weight: 800;
-            color: #111827;
-            margin: 0 0 8px 0;
-          }
-          .subtitle {
-            font-size: 14px;
-            color: #6b7280;
-            font-weight: 500;
+            letter-spacing: 0.12em;
+            line-height: ${PDF_TITLE_LINE_HEIGHT}px;
+            text-overflow: ellipsis;
+            text-transform: uppercase;
+            white-space: nowrap;
           }
           .songs-list {
-            display: flex;
-            flex-direction: column;
+            position: relative;
+            width: 100%;
+            padding: 0;
           }
-          .song-row {
-            display: flex;
-            align-items: center;
-            padding: 12px 8px;
-          }
-          .song-number {
-            width: 36px;
-            height: 36px;
-            background-color: #f3f4f6;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 800;
-            color: #4b5563;
-            margin-right: 14px;
-            font-size: 14px;
-          }
-          .song-details {
-            flex: 1;
-          }
-          .song-title {
-            font-size: 18px;
-            font-weight: 700;
-            color: #1f2937;
-            margin-bottom: 4px;
+          .song-entry {
+            position: relative;
+            width: 100%;
+            height: ${PDF_SONG_ENTRY_HEIGHT}px;
+            padding-left: ${PDF_SONGS_LIST_LEFT_PADDING}px;
           }
           .song-meta {
-            font-size: 12px;
-            color: #6b7280;
-            font-weight: 500;
+            width: 100%;
+            height: ${PDF_SONG_META_LINE_HEIGHT}px;
+            overflow: hidden;
+            color: #737373;
+            font-size: ${PDF_SONG_META_FONT_SIZE}px;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            line-height: ${PDF_SONG_META_LINE_HEIGHT}px;
+            text-overflow: ellipsis;
+            text-transform: uppercase;
+            white-space: nowrap;
           }
-          .transition-row {
-            display: flex;
-            align-items: center;
-            min-height: 32px;
-            margin-top: -6px;
-            margin-bottom: -6px;
-          }
-          .transition-indicator-col {
-            width: 36px;
-            margin-right: 14px;
-            display: flex;
-            justify-content: center;
-          }
-          .transition-content-col {
-            flex: 1;
-            display: flex;
-            align-items: center;
-          }
-          .annotation-text {
+          .song-comment {
+            width: 100%;
+            height: ${PDF_SONG_NOTE_LINE_HEIGHT}px;
+            overflow: hidden;
+            color: #a8a29e;
+            font-size: ${PDF_SONG_NOTE_FONT_SIZE}px;
             font-style: italic;
-            color: #4b5563;
-            font-size: 14px;
-            font-weight: 500;
-            line-height: 1.4;
+            font-weight: 800;
+            letter-spacing: 0.1em;
+            line-height: ${PDF_SONG_NOTE_LINE_HEIGHT}px;
+            text-overflow: ellipsis;
+            text-transform: uppercase;
+            white-space: nowrap;
+          }
+          .song-title {
+            display: block;
+            width: 100%;
+            height: ${PDF_SONG_TITLE_LINE_HEIGHT}px;
+            overflow: hidden;
+            color: #000000;
+            font-size: ${PDF_SONG_TITLE_FONT_SIZE}px;
+            font-weight: 900;
+            letter-spacing: 0.025em;
+            line-height: ${PDF_SONG_TITLE_LINE_HEIGHT}px;
+            text-overflow: ellipsis;
+            text-transform: uppercase;
+            white-space: nowrap;
+          }
+          .transition-arrow {
+            position: absolute;
+            z-index: 1;
+            top: 0;
+            left: 0;
+            width: ${PDF_TRANSITION_ARROW_WIDTH}px;
+            height: ${PDF_TRANSITION_ARROW_HEIGHT}px;
+            overflow: visible;
           }
         </style>
       </head>
       <body>
-        <div class="header">
-          <h1 class="title">${setlist.name}</h1>
-          <div class="subtitle">
-            Créée le ${formattedDate} · ${songs.length} ${songs.length === 1 ? 'morceau' : 'morceaux'} · Durée totale : ${formatDuration(totalDuration)}
-          </div>
-        </div>
-        <div class="songs-list">
-          ${songRowsHTML}
-        </div>
+        ${pagesHTML}
       </body>
       </html>
     `;
@@ -376,7 +519,21 @@ export default function SetlistDetailScreen() {
       const Print = await import('expo-print');
       const Sharing = await import('expo-sharing');
       const htmlContent = generateHTML();
-      const { uri } = await Print.printToFileAsync({ html: htmlContent });
+      const { uri } = await Print.printToFileAsync({
+        html: htmlContent,
+        width: 612,
+        height: 792,
+        textZoom: Platform.OS === 'android' ? 112 : 100,
+      });
+      const exportDate = formatPdfDate(new Date());
+      const setlistName = sanitizePdfFileName(setlist?.name || 'Setlist') || 'Setlist';
+      const pdfFile = new File(uri);
+      const pdfDirectoryUri = uri.slice(0, uri.lastIndexOf('/') + 1);
+      const renamedPdfFile = new File(`${pdfDirectoryUri}${setlistName}_${exportDate}.pdf`);
+      if (renamedPdfFile.exists) {
+        renamedPdfFile.delete();
+      }
+      pdfFile.move(renamedPdfFile);
       if (Platform.OS === 'web') {
         return;
       }
@@ -385,10 +542,10 @@ export default function SetlistDetailScreen() {
         Alert.alert('Partage indisponible', 'Le partage de fichiers n\'est pas disponible sur cet appareil.');
         return;
       }
-      await Sharing.shareAsync(uri, {
+      await Sharing.shareAsync(renamedPdfFile.uri, {
         UTI: 'com.adobe.pdf',
         mimeType: 'application/pdf',
-        dialogTitle: `Exporter la setlist ${setlist?.name}`,
+        dialogTitle: `Exporter la setlist ${setlist?.name} (${exportDate})`,
       });
     } catch (error) {
       console.error('Erreur lors de la génération du PDF :', error);
@@ -398,6 +555,13 @@ export default function SetlistDetailScreen() {
 
   const selectedCount = useMemo(() => selectedIds.size, [selectedIds]);
   const totalDuration = useMemo(() => songs.reduce((total, song) => total + (song.duration_seconds || 0), 0), [songs]);
+  const selectedPdfDetails = useMemo(() => {
+    const details: string[] = [];
+    if (modalShowBpm) details.push('Tempo');
+    if (modalShowKey) details.push('Tonalité');
+    if (modalShowDuration) details.push('Durée');
+    return details;
+  }, [modalShowBpm, modalShowDuration, modalShowKey]);
   const pageBottomPadding = Math.max(insets.bottom, 16) + 24;
   const modalBottomOffset = getModalBottomOffset(insets.bottom);
   const modalFooterBottomPadding = getModalFooterBottomPadding(insets.bottom);
@@ -463,15 +627,78 @@ export default function SetlistDetailScreen() {
             <Text className="text-center text-sm leading-6 text-zinc-400">Ajoutez des chansons, puis fixez leur ordre avec les flèches.</Text>
           </View>
         }
-        renderItem={({ item, index }) => (
+        renderItem={({ item, index }) => {
+          const previousSong = index > 0 ? songs[index - 1] : null;
+          const hasSegue = item.segue === 1;
+          const songNotesLine = getSongNotesLine(item);
+          const songDetailParts = songNotesLine ? [songNotesLine] : [];
+          const songDetailsText = songDetailParts.length > 0 ? songDetailParts.join(' · ') : '';
+          const songComment = '';
+          const transitionDetailParts = songDetailParts;
+          const hasTransitionDetails = transitionDetailParts.length > 0;
+
+          return (
           <View>
+            {true && (
+              <TouchableOpacity
+                onPress={() => openTransitionModal(item, index)}
+                activeOpacity={0.7}
+                className="mb-2 flex-row items-start pl-5 pr-2"
+              >
+                <View className="mr-2 w-8 items-center justify-start">
+                  {hasSegue ? (
+                    <Svg width={14} height={38} viewBox="0 0 14 38">
+                      <Path
+                        d="M 7 4 L 7 28"
+                        stroke="#818cf8"
+                        strokeWidth={3}
+                        fill="none"
+                        strokeLinecap="round"
+                      />
+                      <Path
+                        d="M 3 24 L 7 30 L 11 24"
+                        stroke="#818cf8"
+                        strokeWidth={3}
+                        fill="none"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </Svg>
+                  ) : (
+                    <View className="h-7 w-[2px] rounded bg-zinc-700" />
+                  )}
+                </View>
+
+                <View className="flex-1 justify-center py-0.5">
+                  {hasTransitionDetails ? (
+                    <Text className="text-sm font-semibold italic text-zinc-400">
+                      {transitionDetailParts.join(' · ')}
+                    </Text>
+                  ) : hasSegue ? (
+                    <Text className="text-indigo-400/70 text-xs font-bold uppercase tracking-wider">Enchaînement direct</Text>
+                  ) : (
+                    <Text className="text-zinc-600/40 text-xs font-bold uppercase tracking-wider">Ajouter une transition...</Text>
+                  )}
+                  {songComment ? (
+                    <Text className="mt-1 text-xs italic text-zinc-500" numberOfLines={1}>
+                      [{songComment}]
+                    </Text>
+                  ) : null}
+                </View>
+
+                <View className="h-8 w-8 items-center justify-center rounded-xl border border-white/5 bg-white/5">
+                  <Ionicons name="create-outline" size={14} color={hasSegue || hasTransitionDetails || !!songComment ? '#818cf8' : '#71717a'} />
+                </View>
+              </TouchableOpacity>
+            )}
+
             <View className="flex-row items-center rounded-3xl border border-white/10 bg-white/5 p-4">
               <View className="mr-3 h-9 w-9 items-center justify-center rounded-full bg-indigo-400/10">
                 <Text className="font-black text-indigo-300" style={{ fontVariant: ['tabular-nums'] }}>{index + 1}</Text>
               </View>
               <View className="flex-1 pr-3">
-                <Text className="font-extrabold text-white" numberOfLines={1}>{item.title || 'Sans titre'}</Text>
-                <Text className="mt-1 text-xs text-zinc-500">{item.bpm ? `${item.bpm} BPM` : '— BPM'} · {item.key || '— Ton'} · {formatDuration(item.duration_seconds)}</Text>
+                <Text className="text-xs text-zinc-500">{item.bpm ? `${item.bpm} BPM` : '— BPM'} · {item.key || '— Ton'} · {formatDuration(item.duration_seconds)}</Text>
+                <Text className="mt-1 font-extrabold text-white" numberOfLines={1}>{item.title || 'Sans titre'}</Text>
               </View>
               <View className="flex-row gap-2">
                 <TouchableOpacity
@@ -493,24 +720,24 @@ export default function SetlistDetailScreen() {
               </View>
             </View>
 
-            {index < songs.length - 1 && (
+            {false && index < songs.length - 1 && (
               <TouchableOpacity
                 onPress={() => openTransitionModal(item, index)}
                 activeOpacity={0.7}
-                className="mt-3 flex-row items-center px-4"
+                className="mt-2 flex-row items-start pl-5 pr-2"
               >
-                <View className="w-9 mr-3 items-center justify-center">
+                <View className="mr-2 w-8 items-center justify-start">
                   {item.segue === 1 ? (
-                    <Svg width={24} height={32} viewBox="0 0 30 40">
+                    <Svg width={14} height={38} viewBox="0 0 14 38">
                       <Path
-                        d="M 25,2 C 2,2 2,38 25,38"
+                        d="M 7 4 L 7 28"
                         stroke="#818cf8"
                         strokeWidth={3}
                         fill="none"
                         strokeLinecap="round"
                       />
                       <Path
-                        d="M 17,32 L 25,38 L 17,44"
+                        d="M 3 24 L 7 30 L 11 24"
                         stroke="#818cf8"
                         strokeWidth={3}
                         fill="none"
@@ -519,27 +746,29 @@ export default function SetlistDetailScreen() {
                       />
                     </Svg>
                   ) : (
-                    <View className="w-[2px] h-6 bg-zinc-800 rounded" />
+                    <View className="h-7 w-[2px] rounded bg-zinc-700" />
                   )}
                 </View>
 
-                <View className="flex-1 justify-center py-1">
-                  {item.annotation ? (
-                    <Text className="text-zinc-400 italic font-semibold text-sm">{item.annotation}</Text>
+                <View className="flex-1 justify-center py-0.5">
+                  {hasTransitionDetails ? (
+                    <Text className="text-sm font-semibold italic text-zinc-400">
+                      {transitionDetailParts.join(' · ')}
+                    </Text>
                   ) : item.segue === 1 ? (
-                    <Text className="text-indigo-400/60 text-xs font-bold uppercase tracking-wider">Enchaînement direct</Text>
+                    <Text className="text-indigo-400/70 text-xs font-bold uppercase tracking-wider">Enchaînement direct</Text>
                   ) : (
-                    <Text className="text-zinc-600/30 text-xs font-bold uppercase tracking-wider">Ajouter une transition...</Text>
+                    <Text className="text-zinc-600/40 text-xs font-bold uppercase tracking-wider">Ajouter une transition...</Text>
                   )}
                 </View>
 
                 <View className="h-8 w-8 items-center justify-center rounded-xl border border-white/5 bg-white/5">
-                  <Ionicons name="create-outline" size={14} color={item.segue === 1 || item.annotation ? '#818cf8' : '#71717a'} />
+                  <Ionicons name="create-outline" size={14} color={item.segue === 1 || hasTransitionDetails ? '#818cf8' : '#71717a'} />
                 </View>
               </TouchableOpacity>
             )}
           </View>
-        )}
+        )}}
       />
 
       <Modal visible={showSongModal} transparent animationType="slide" onRequestClose={() => setShowSongModal(false)}>
@@ -566,8 +795,8 @@ export default function SetlistDetailScreen() {
                       {isSelected && <Ionicons name="checkmark" size={17} color="#fff" />}
                     </View>
                     <View className="flex-1">
-                      <Text className="font-bold text-white">{item.title || 'Sans titre'}</Text>
-                      <Text className="mt-1 text-xs text-zinc-500">{item.bpm ? `${item.bpm} BPM` : '— BPM'} · {item.key || '— Ton'} · {formatDuration(item.duration_seconds)}</Text>
+                      <Text className="text-xs text-zinc-500">{item.bpm ? `${item.bpm} BPM` : '— BPM'} · {item.key || '— Ton'} · {formatDuration(item.duration_seconds)}</Text>
+                      <Text className="mt-1 font-bold text-white">{item.title || 'Sans titre'}</Text>
                     </View>
                   </TouchableOpacity>
                 );
@@ -622,6 +851,62 @@ export default function SetlistDetailScreen() {
                   placeholderTextColor="#71717a"
                   className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3.5 text-base text-white"
                 />
+              </View>
+
+              <View className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                <Text className="mb-3 text-sm font-bold text-zinc-300">Ligne de note dans le PDF</Text>
+                <Text className="mb-3 text-xs leading-5 text-zinc-400">
+                  {selectedPdfDetails.length > 0
+                    ? `Affiché actuellement : ${selectedPdfDetails.join(', ')}`
+                    : 'Affiché actuellement : aucun détail'}
+                </Text>
+
+                <View className="gap-y-3">
+                  <View className="flex-row items-center justify-between">
+                    <Text className="flex-1 pr-4 text-sm text-zinc-300">Afficher le tempo</Text>
+                    <TouchableOpacity
+                      onPress={() => setModalShowBpm(!modalShowBpm)}
+                      activeOpacity={0.8}
+                      className={`h-7 w-12 rounded-full p-1 flex-row ${modalShowBpm ? 'bg-indigo-600 justify-end' : 'bg-zinc-800 justify-start'}`}
+                    >
+                      <View className="h-5 w-5 rounded-full bg-white" />
+                    </TouchableOpacity>
+                  </View>
+
+                  <View className="flex-row items-center justify-between">
+                    <Text className="flex-1 pr-4 text-sm text-zinc-300">Afficher la tonalité</Text>
+                    <TouchableOpacity
+                      onPress={() => setModalShowKey(!modalShowKey)}
+                      activeOpacity={0.8}
+                      className={`h-7 w-12 rounded-full p-1 flex-row ${modalShowKey ? 'bg-indigo-600 justify-end' : 'bg-zinc-800 justify-start'}`}
+                    >
+                      <View className="h-5 w-5 rounded-full bg-white" />
+                    </TouchableOpacity>
+                  </View>
+
+                  <View className="flex-row items-center justify-between">
+                    <Text className="flex-1 pr-4 text-sm text-zinc-300">Afficher la durée</Text>
+                    <TouchableOpacity
+                      onPress={() => setModalShowDuration(!modalShowDuration)}
+                      activeOpacity={0.8}
+                      className={`h-7 w-12 rounded-full p-1 flex-row ${modalShowDuration ? 'bg-indigo-600 justify-end' : 'bg-zinc-800 justify-start'}`}
+                    >
+                      <View className="h-5 w-5 rounded-full bg-white" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                <View className="mt-4 rounded-2xl border border-white/10 bg-black/20 px-3 py-2.5">
+                  <Text className="text-[11px] uppercase tracking-wider text-zinc-500">Aperçu de la ligne de note</Text>
+                  <Text className="mt-1 text-sm text-zinc-200">
+                    {[
+                      modalAnnotation.trim() || null,
+                      modalShowBpm ? 'Tempo' : null,
+                      modalShowKey ? 'Tonalité' : null,
+                      modalShowDuration ? 'Durée' : null,
+                    ].filter(Boolean).join(' · ') || 'Aucun élément affiché'}
+                  </Text>
+                </View>
               </View>
             </View>
 

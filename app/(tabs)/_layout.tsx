@@ -18,9 +18,16 @@ export default function TabLayout() {
       }}
     >
       <Tabs.Screen
-        name="repertoire"
+        name="home"
         options={{
           title: 'Home',
+        }}
+      />
+      <Tabs.Screen
+        name="repertoire"
+        options={{
+          href: null,
+          title: 'Repertoire',
         }}
       />
       <Tabs.Screen
