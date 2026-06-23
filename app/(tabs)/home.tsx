@@ -20,7 +20,18 @@ interface ActionTileProps {
   colors: readonly [string, string];
   onPress: () => void;
   accent?: string;
+  textColor?: string;
   wide?: boolean;
+}
+
+function WaveColumn({
+  height,
+  color,
+}: {
+  height: number;
+  color: string;
+}) {
+  return <View style={{ height, backgroundColor: color }} className="w-2 rounded-full" />;
 }
 
 function ActionTile({
@@ -30,28 +41,42 @@ function ActionTile({
   colors,
   onPress,
   accent = '#ffffff',
+  textColor = '#ffffff',
   wide = false,
 }: ActionTileProps) {
   return (
     <TouchableOpacity
-      activeOpacity={0.85}
+      activeOpacity={0.88}
       onPress={onPress}
-      className={wide ? 'min-h-[172px] rounded-[28px]' : 'min-h-[164px] flex-1 rounded-[28px]'}
+      className={wide ? 'min-h-[172px] rounded-[30px]' : 'min-h-[168px] flex-1 rounded-[30px]'}
     >
       <LinearGradient
         colors={colors}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        className="flex-1 overflow-hidden rounded-[28px] border border-white/10 p-5"
+        className="flex-1 overflow-hidden rounded-[30px] border border-black/10 p-5"
       >
-        <View className="absolute -right-6 -top-4 h-24 w-24 rounded-full bg-white/10" />
-        <View className="absolute -bottom-8 right-6 h-20 w-20 rounded-full bg-black/10" />
-        <View className="mb-8 h-12 w-12 items-center justify-center rounded-2xl bg-black/20">
+        <View className="absolute -right-8 -top-8 h-28 w-28 rounded-full bg-white/20" />
+        <View className="absolute bottom-4 right-4 flex-row items-end gap-1 opacity-30">
+          <WaveColumn height={18} color={textColor} />
+          <WaveColumn height={34} color={textColor} />
+          <WaveColumn height={54} color={textColor} />
+          <WaveColumn height={34} color={textColor} />
+          <WaveColumn height={18} color={textColor} />
+        </View>
+        <View
+          className="mb-9 h-12 w-12 items-center justify-center rounded-2xl border border-black/10"
+          style={{ backgroundColor: 'rgba(17, 17, 17, 0.14)' }}
+        >
           <Ionicons name={icon} size={24} color={accent} />
         </View>
         <View className="mt-auto">
-          <Text className="mb-2 text-xl font-extrabold text-white">{title}</Text>
-          <Text className="text-sm leading-5 text-white/75">{subtitle}</Text>
+          <Text className="mb-2 text-xl font-extrabold" style={{ color: textColor }}>
+            {title}
+          </Text>
+          <Text className="text-sm leading-5" style={{ color: `${textColor}CC` }}>
+            {subtitle}
+          </Text>
         </View>
       </LinearGradient>
     </TouchableOpacity>
@@ -95,70 +120,106 @@ export default function HomeScreen() {
   const bottomContentPadding = getFloatingTabBarContentPadding(insets.bottom);
 
   return (
-    <SafeAreaView className="flex-1 bg-black" edges={['top']}>
+    <SafeAreaView className="flex-1 bg-[#f5efe9]" edges={['top']}>
       <ScrollView
-        className="flex-1"
+        className="flex-1 bg-[#f5efe9]"
         contentContainerStyle={{ paddingBottom: bottomContentPadding }}
         showsVerticalScrollIndicator={false}
       >
         <View className="px-5 pb-6 pt-4">
           <LinearGradient
-            colors={['#1d4ed8', '#0f172a']}
-            start={{ x: 0, y: 0 }}
+            colors={['#171717', '#2d1631']}
+            start={{ x: 0, y: 0.2 }}
             end={{ x: 1, y: 1 }}
-            className="overflow-hidden rounded-[32px] border border-white/10 px-6 py-6"
+            className="overflow-hidden rounded-[34px] border border-black/10 px-6 py-6"
           >
-            <View className="absolute -right-10 -top-10 h-36 w-36 rounded-full bg-cyan-300/20" />
-            <View className="absolute -bottom-12 left-0 h-28 w-28 rounded-full bg-indigo-400/20" />
-            <Text className="mb-2 text-xs font-black uppercase tracking-[3px] text-cyan-100/80">
-              FaderZero
-            </Text>
-            <Text className="max-w-[240px] text-3xl font-extrabold leading-9 text-white">
-              {'Votre cockpit sc\u00E8ne, pr\u00EAt pour la r\u00E9p\u00E8te.'}
-            </Text>
-            <Text className="mt-3 max-w-[280px] text-sm leading-6 text-white/75">
-              Retrouvez vos morceaux, lancez vos setlists et ouvrez les outils live en un geste.
-            </Text>
+            <View className="absolute -right-12 -top-10 h-40 w-40 rounded-full bg-[#c4b5fd]/25" />
+            <View className="absolute -left-6 bottom-10 h-24 w-24 rounded-full bg-[#8b2f65]/25" />
 
-            <View className="mt-6 flex-row gap-3">
-              <View className="flex-1 rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+            <View className="flex-row items-start justify-between gap-4">
+              <View className="flex-1">
+                <Text className="mb-2 text-xs font-black uppercase tracking-[3px] text-[#e9d7ff]">
+                  FaderZero
+                </Text>
+                <Text className="max-w-[230px] text-3xl font-extrabold leading-9 text-[#fff8f4]">
+                  {'Le cockpit de sc\u00E8ne qui vibre comme votre logo.'}
+                </Text>
+                <Text className="mt-3 max-w-[270px] text-sm leading-6 text-[#f5e7ff]/80">
+                  Un accueil plus musical, plus contrasté, plus FaderZero.
+                </Text>
+              </View>
+
+              <View className="items-center justify-center pt-1">
+                <View className="h-[170px] w-[84px] items-center overflow-hidden rounded-[40px] bg-[#101010]">
+                  <LinearGradient
+                    colors={['#8f2f67', '#9e8df3']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    className="absolute inset-0"
+                  />
+                  <View className="absolute left-1/2 h-full w-2 -translate-x-1/2 bg-[#f8f1eb]" />
+                  <View className="absolute left-1/2 top-[26px] h-[118px] w-[44px] -translate-x-1/2 rounded-[24px] bg-[#161616]" />
+                  <View className="absolute left-1/2 top-[70px] h-[48px] w-[26px] -translate-x-1/2 rounded-2xl bg-[#f8f1eb]" />
+                  <View className="absolute left-1/2 top-[82px] h-1.5 w-5 -translate-x-1/2 rounded-full bg-[#161616]" />
+                  <View className="absolute left-1/2 top-[91px] h-1.5 w-5 -translate-x-1/2 rounded-full bg-[#161616]" />
+                  <View className="absolute left-1/2 top-[100px] h-1.5 w-5 -translate-x-1/2 rounded-full bg-[#161616]" />
+                </View>
+              </View>
+            </View>
+
+            <View className="mt-6 flex-row items-end justify-center gap-2">
+              <View className="mr-2 flex-row items-end gap-1">
+                <WaveColumn height={16} color="#8f2f67" />
+                <WaveColumn height={36} color="#8f2f67" />
+                <WaveColumn height={60} color="#8f2f67" />
+                <WaveColumn height={28} color="#8f2f67" />
+              </View>
+              <View className="flex-1 rounded-[22px] border border-white/10 bg-white/10 px-4 py-3">
                 <Text className="text-2xl font-extrabold text-white">{stats.songs}</Text>
-                <Text className="text-xs font-semibold uppercase tracking-wide text-white/65">
+                <Text className="text-xs font-semibold uppercase tracking-[1.5px] text-white/70">
                   morceaux
                 </Text>
               </View>
-              <View className="flex-1 rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+              <View className="flex-1 rounded-[22px] border border-white/10 bg-white/10 px-4 py-3">
                 <Text className="text-2xl font-extrabold text-white">{stats.setlists}</Text>
-                <Text className="text-xs font-semibold uppercase tracking-wide text-white/65">
+                <Text className="text-xs font-semibold uppercase tracking-[1.5px] text-white/70">
                   setlists
                 </Text>
               </View>
-              <View className="flex-1 rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+              <View className="flex-1 rounded-[22px] border border-white/10 bg-white/10 px-4 py-3">
                 <Text className="text-2xl font-extrabold text-white">{stats.readySongs}</Text>
-                <Text className="text-xs font-semibold uppercase tracking-wide text-white/65">
-                  pr{'\u00EA'}ts
+                <Text className="text-xs font-semibold uppercase tracking-[1.5px] text-white/70">
+                  prêts
                 </Text>
+              </View>
+              <View className="ml-2 flex-row items-end gap-1">
+                <WaveColumn height={28} color="#a59af8" />
+                <WaveColumn height={60} color="#a59af8" />
+                <WaveColumn height={36} color="#a59af8" />
+                <WaveColumn height={16} color="#a59af8" />
               </View>
             </View>
           </LinearGradient>
 
           <View className="mb-4 mt-7 flex-row items-end justify-between">
             <View>
-              <Text className="text-2xl font-extrabold text-white">{'Acc\u00E8s rapide'}</Text>
-              <Text className="mt-1 text-sm text-zinc-400">{'Des tuiles pens\u00E9es pour jouer vite.'}</Text>
+              <Text className="text-2xl font-extrabold text-[#171717]">Accès rapide</Text>
+              <Text className="mt-1 text-sm text-[#5c5563]">
+                Des tuiles habillées dans les codes du logo.
+              </Text>
             </View>
-            <Text className="text-xs font-bold uppercase tracking-[2px] text-zinc-500">
-              Mobile first
+            <Text className="text-xs font-bold uppercase tracking-[2px] text-[#8f2f67]">
+              brand ui
             </Text>
           </View>
 
           <View className="gap-4">
             <ActionTile
-              title={'R\u00E9pertoire'}
-              subtitle={'Parcourez vos chansons, cherchez un titre et ouvrez l\u2019\u00E9diteur.'}
+              title="Répertoire"
+              subtitle="Toutes vos chansons dans une tuile signature prune et lavande."
               icon="library"
-              colors={['#18181b', '#27272a']}
-              accent="#f8fafc"
+              colors={['#8f2f67', '#9e8df3']}
+              accent="#fff8f4"
               wide
               onPress={() => router.push('/repertoire')}
             />
@@ -166,16 +227,19 @@ export default function HomeScreen() {
             <View className="flex-row gap-4">
               <ActionTile
                 title="Setlists"
-                subtitle="Construisez le fil du show et gardez l'ordre sous la main."
+                subtitle="Préparez le show avec une carte crème à l'esprit scène."
                 icon="musical-notes"
-                colors={['#312e81', '#1d4ed8']}
+                colors={['#fff8f4', '#efe2d8']}
+                accent="#161616"
+                textColor="#161616"
                 onPress={() => router.push('/setlists')}
               />
               <ActionTile
                 title="Prompteur"
-                subtitle={'Passez en mode sc\u00E8ne pour faire d\u00E9filer les paroles.'}
+                subtitle="Mode live avec contraste noir et halo violet."
                 icon="mic"
-                colors={['#3f1d7a', '#7c3aed']}
+                colors={['#18181b', '#4a2147']}
+                accent="#f3e8ff"
                 onPress={() => router.push('/live/prompter')}
               />
             </View>
@@ -183,16 +247,19 @@ export default function HomeScreen() {
             <View className="flex-row gap-4">
               <ActionTile
                 title="Recevoir"
-                subtitle={'Scannez une chanson envoy\u00E9e depuis un autre \u00E9cran.'}
+                subtitle="Scannez un partage avec une ambiance claire et technique."
                 icon="scan"
-                colors={['#0f3d2e', '#059669']}
+                colors={['#d9d1ff', '#a59af8']}
+                accent="#161616"
+                textColor="#161616"
                 onPress={() => router.push('/sync/receive')}
               />
               <ActionTile
                 title="Menu"
-                subtitle="Retrouvez les options du profil et la synchro de groupe."
+                subtitle="Réglages et synchro dans une tuile noire comme l'icône app."
                 icon="settings"
-                colors={['#3f3f46', '#18181b']}
+                colors={['#101010', '#2a2a2a']}
+                accent="#f4e7ff"
                 onPress={() => router.push('/profile')}
               />
             </View>
