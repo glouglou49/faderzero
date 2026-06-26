@@ -1,48 +1,51 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+# Workspace / assistant
+.codex-remote-attachments/
 
-# dependencies
-node_modules/
+# Root logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# PWA
+pwa/node_modules/
+pwa/dist/
+pwa/dist-ssr/
+pwa/*.local
+pwa/.cert/
 
 # Expo
-.expo/
-dist/
-web-build/
-expo-env.d.ts
+expo/node_modules/
+expo/.expo/
+expo/dist/
+expo/web-build/
+expo/expo-env.d.ts
+expo/.kotlin/
+expo/.metro-health-check*
+expo/*.orig.*
+expo/*.jks
+expo/*.p8
+expo/*.p12
+expo/*.key
+expo/*.mobileprovision
+expo/*.pem
+expo/.env*.local
+expo/*.tsbuildinfo
+expo/app-example/
+expo/ios/
+expo/android/
 
-# Native
-.kotlin/
-*.orig.*
-*.jks
-*.p8
-*.p12
-*.key
-*.mobileprovision
-
-# Metro
-.metro-health-check*
-
-# debug
-npm-debug.*
-yarn-debug.*
-yarn-error.*
-
-# macOS
+# Editor files
 .DS_Store
-*.pem
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
 
-# local env files
-.env*.local
+# Git backups
+expo/.git.backup-monorepo/
 
-# local editor / assistant settings
-.vscode/
-.claude/
-CLAUDE.md
-
-# typescript
-*.tsbuildinfo
-
-app-example
-
-# generated native folders
-/ios
-/android
