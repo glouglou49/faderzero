@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { FeatureCard } from '@/components/FeatureCard';
 import { FormDialog } from '@/components/FormDialog';
@@ -10,11 +10,46 @@ import { formatSongDuration, getSongStatusTone } from '@/features/songs/songPres
 export function SongsPage() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [isVirtualKeyboardOpen, setIsVirtualKeyboardOpen] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [newSongTitle, setNewSongTitle] = useState('');
   const [creationError, setCreationError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const songs = useLiveQuery(() => songsRepository.list({ query: searchQuery }), [searchQuery]);
+  const shouldReleaseStickyHeader = isSearchFocused && isVirtualKeyboardOpen;
+
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) {
+      return;
+    }
+    const activeViewport = viewport;
+
+    function updateKeyboardState() {
+      const activeElement = document.activeElement;
+      const isEditableElement =
+        activeElement instanceof HTMLInputElement ||
+        activeElement instanceof HTMLTextAreaElement ||
+        (activeElement instanceof HTMLElement && activeElement.isContentEditable);
+
+      const keyboardHeight = window.innerHeight - activeViewport.height;
+      setIsVirtualKeyboardOpen(isEditableElement && keyboardHeight > 150);
+    }
+
+    updateKeyboardState();
+    activeViewport.addEventListener('resize', updateKeyboardState);
+    activeViewport.addEventListener('scroll', updateKeyboardState);
+    window.addEventListener('focusin', updateKeyboardState);
+    window.addEventListener('focusout', updateKeyboardState);
+
+    return () => {
+      activeViewport.removeEventListener('resize', updateKeyboardState);
+      activeViewport.removeEventListener('scroll', updateKeyboardState);
+      window.removeEventListener('focusin', updateKeyboardState);
+      window.removeEventListener('focusout', updateKeyboardState);
+    };
+  }, []);
 
   async function handleCreateSong(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -44,7 +79,19 @@ export function SongsPage() {
 
   return (
     <div className="space-y-4">
-      <section className="sticky top-8 z-30 space-y-3 bg-[var(--fz-bg)] px-1 pb-3">
+      <section
+        className={[
+          'space-y-3 bg-[var(--fz-bg)] px-1 pb-3 pt-2',
+          shouldReleaseStickyHeader ? 'relative z-20' : 'sticky z-30 -mx-1 border-b border-white/8',
+        ].join(' ')}
+        style={
+          shouldReleaseStickyHeader
+            ? undefined
+            : {
+                top: 'calc(var(--fz-header-height, 64px) + var(--fz-viewport-offset-top, 0px))',
+              }
+        }
+      >
         <div className="flex items-start justify-between gap-3">
           <h1 className="min-w-0 flex-1 text-[2rem] font-black tracking-tight text-white">Repertoire</h1>
           <button
@@ -64,6 +111,8 @@ export function SongsPage() {
           <input
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
+            onFocus={() => setIsSearchFocused(true)}
+            onBlur={() => setIsSearchFocused(false)}
             placeholder="Rechercher une chanson..."
             className="fz-input text-sm"
           />

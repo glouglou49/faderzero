@@ -8,6 +8,8 @@ import type {
 } from '@/db/schema';
 import { createId } from '@/lib/createId';
 import { now } from '@/lib/now';
+import { useAuthStore } from '@/stores/authStore';
+import { enqueueMutation } from '@/db/syncQueueHelper';
 
 export class SetlistSongsRepository {
   private readonly database: FaderZeroDatabase;
@@ -16,9 +18,16 @@ export class SetlistSongsRepository {
     this.database = database;
   }
 
+  private getActiveWorkspaceId(): string {
+    return useAuthStore.getState().activeWorkspace?.id || 'default-workspace';
+  }
+
   async listBySetlistId(setlistId: string) {
     const rows = await this.database.setlistSongs.where('setlistId').equals(setlistId).toArray();
-    return rows.sort((left, right) => left.position - right.position);
+    // Exclure les suppressions logiques de la liste active
+    return rows
+      .filter((row) => row.deletedAt === undefined)
+      .sort((left, right) => left.position - right.position);
   }
 
   async listDetailedBySetlistId(setlistId: string) {
@@ -58,16 +67,43 @@ export class SetlistSongsRepository {
 
   async create(input: CreateSetlistSongInput) {
     const timestamp = now();
+    const workspaceId = this.getActiveWorkspaceId();
+
     const setlistSong: SetlistSongRecord = {
       id: createId(),
+      workspaceId,
       setlistId: input.setlistId,
       songId: input.songId,
       position: input.position,
+      noteShowBpm: false,
+      noteShowKey: false,
+      isDirectSegue: false,
       createdAt: timestamp,
       updatedAt: timestamp,
+      syncStatus: 'pending',
     };
 
-    await this.database.setlistSongs.add(setlistSong);
+    await this.database.transaction('rw', this.database.setlistSongs, this.database.syncQueue, async () => {
+      await this.database.setlistSongs.add(setlistSong);
+      await enqueueMutation(
+        this.database,
+        workspaceId,
+        'setlistSong',
+        setlistSong.id,
+        'create',
+        {
+          setlistId: setlistSong.setlistId,
+          songId: setlistSong.songId,
+          position: setlistSong.position,
+          noteShowBpm: setlistSong.noteShowBpm,
+          noteShowKey: setlistSong.noteShowKey,
+          isDirectSegue: setlistSong.isDirectSegue,
+          createdAt: setlistSong.createdAt,
+          updatedAt: setlistSong.updatedAt,
+        }
+      );
+    });
+
     return setlistSong;
   }
 
@@ -91,13 +127,55 @@ export class SetlistSongsRepository {
       throw new Error(`Setlist song not found: ${id}`);
     }
 
+    const timestamp = now();
     const nextSetlistSong: SetlistSongRecord = {
       ...existingSetlistSong,
-      ...updates,
-      updatedAt: now(),
+      updatedAt: timestamp,
+      syncStatus: 'pending',
     };
 
-    await this.database.setlistSongs.put(nextSetlistSong);
+    const payload: any = { updatedAt: timestamp };
+
+    if (updates.position !== undefined) {
+      nextSetlistSong.position = updates.position;
+      payload.position = updates.position;
+    }
+    if (updates.noteShowBpm !== undefined) {
+      nextSetlistSong.noteShowBpm = updates.noteShowBpm;
+      payload.noteShowBpm = updates.noteShowBpm;
+    }
+    if (updates.noteShowKey !== undefined) {
+      nextSetlistSong.noteShowKey = updates.noteShowKey;
+      payload.noteShowKey = updates.noteShowKey;
+    }
+    if (updates.isDirectSegue !== undefined) {
+      nextSetlistSong.isDirectSegue = updates.isDirectSegue;
+      payload.isDirectSegue = updates.isDirectSegue;
+    }
+    if (updates.annotation !== undefined) {
+      const annotation = updates.annotation.trim();
+      if (annotation) {
+        nextSetlistSong.annotation = annotation;
+        payload.annotation = annotation;
+      } else {
+        delete nextSetlistSong.annotation;
+        payload.annotation = null;
+      }
+    }
+
+    await this.database.transaction('rw', this.database.setlistSongs, this.database.syncQueue, async () => {
+      await this.database.setlistSongs.put(nextSetlistSong);
+      await enqueueMutation(
+        this.database,
+        nextSetlistSong.workspaceId,
+        'setlistSong',
+        nextSetlistSong.id,
+        'update',
+        payload,
+        existingSetlistSong.serverVersion
+      );
+    });
+
     return nextSetlistSong;
   }
 
@@ -107,24 +185,87 @@ export class SetlistSongsRepository {
       return;
     }
 
-    await this.database.transaction('rw', this.database.setlistSongs, async () => {
-      await this.database.setlistSongs.delete(id);
+    const timestamp = now();
+    const deletedEntry: SetlistSongRecord = {
+      ...existingSetlistSong,
+      deletedAt: timestamp,
+      updatedAt: timestamp,
+      syncStatus: 'pending',
+    };
+
+    await this.database.transaction('rw', this.database.setlistSongs, this.database.syncQueue, async () => {
+      // 1. Soft delete de la liaison setlistSong
+      await this.database.setlistSongs.put(deletedEntry);
+      await enqueueMutation(
+        this.database,
+        deletedEntry.workspaceId,
+        'setlistSong',
+        deletedEntry.id,
+        'soft_delete',
+        { deletedAt: timestamp },
+        existingSetlistSong.serverVersion
+      );
+
+      // 2. Reindexation de la setlist suite à la suppression
       await this.reindexSetlist(existingSetlistSong.setlistId);
     });
   }
 
   async deleteBySetlistId(setlistId: string) {
-    const rows = await this.database.setlistSongs.where('setlistId').equals(setlistId).primaryKeys();
-    await this.database.setlistSongs.bulkDelete(rows);
+    const rows = await this.database.setlistSongs.where('setlistId').equals(setlistId).toArray();
+    const timestamp = now();
+
+    await this.database.transaction('rw', this.database.setlistSongs, this.database.syncQueue, async () => {
+      for (const row of rows) {
+        if (row.deletedAt === undefined) {
+          await this.database.setlistSongs.put({
+            ...row,
+            deletedAt: timestamp,
+            syncStatus: 'pending',
+            updatedAt: timestamp,
+          });
+          await enqueueMutation(
+            this.database,
+            row.workspaceId,
+            'setlistSong',
+            row.id,
+            'soft_delete',
+            { deletedAt: timestamp },
+            row.serverVersion
+          );
+        }
+      }
+    });
   }
 
   async deleteBySongId(songId: string) {
     const rows = await this.database.setlistSongs.where('songId').equals(songId).toArray();
     const affectedSetlistIds = [...new Set(rows.map((row) => row.setlistId))];
+    const timestamp = now();
 
-    await this.database.transaction('rw', this.database.setlistSongs, async () => {
-      await this.database.setlistSongs.bulkDelete(rows.map((row) => row.id));
+    await this.database.transaction('rw', this.database.setlistSongs, this.database.syncQueue, async () => {
+      // 1. Soft delete de toutes les occurrences du morceau dans toutes les setlists
+      for (const row of rows) {
+        if (row.deletedAt === undefined) {
+          await this.database.setlistSongs.put({
+            ...row,
+            deletedAt: timestamp,
+            syncStatus: 'pending',
+            updatedAt: timestamp,
+          });
+          await enqueueMutation(
+            this.database,
+            row.workspaceId,
+            'setlistSong',
+            row.id,
+            'soft_delete',
+            { deletedAt: timestamp },
+            row.serverVersion
+          );
+        }
+      }
 
+      // 2. Réindexer chaque setlist impactée
       for (const setlistId of affectedSetlistIds) {
         await this.reindexSetlist(setlistId);
       }
@@ -133,7 +274,7 @@ export class SetlistSongsRepository {
 
   async move(setlistSongId: string, direction: -1 | 1) {
     const entry = await this.database.setlistSongs.get(setlistSongId);
-    if (!entry) {
+    if (!entry || entry.deletedAt !== undefined) {
       throw new Error(`Setlist song not found: ${setlistSongId}`);
     }
 
@@ -165,10 +306,32 @@ export class SetlistSongsRepository {
     const normalizedEntries = orderedEntries.map((entry, index) => ({
       ...entry,
       position: index,
+      isDirectSegue: index === 0 ? false : (entry.isDirectSegue ?? false),
       updatedAt: timestamp,
+      syncStatus: 'pending' as const,
     }));
 
-    await this.database.setlistSongs.bulkPut(normalizedEntries);
+    await this.database.transaction('rw', this.database.setlistSongs, this.database.syncQueue, async () => {
+      await this.database.setlistSongs.bulkPut(normalizedEntries);
+      
+      // Enregistrer les mutations de réindexation
+      for (const entry of normalizedEntries) {
+        await enqueueMutation(
+          this.database,
+          entry.workspaceId,
+          'setlistSong',
+          entry.id,
+          'update',
+          {
+            position: entry.position,
+            isDirectSegue: entry.isDirectSegue,
+            updatedAt: timestamp,
+          },
+          entry.serverVersion
+        );
+      }
+    });
+
     return this.listBySetlistId(setlistId);
   }
 }

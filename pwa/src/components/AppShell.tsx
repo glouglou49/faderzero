@@ -1,5 +1,5 @@
-import { NavLink, Outlet } from 'react-router-dom';
-import { useState, type SVGProps } from 'react';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type SVGProps } from 'react';
 
 type IconProps = SVGProps<SVGSVGElement>;
 
@@ -77,18 +77,88 @@ const navItems = [
 ] as const;
 
 export function AppShell() {
+  const location = useLocation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [headerHeight, setHeaderHeight] = useState(64);
+  const [viewportOffsetTop, setViewportOffsetTop] = useState(0);
+  const headerRef = useRef<HTMLElement | null>(null);
+
+  useLayoutEffect(() => {
+    function updateHeaderHeight() {
+      if (!headerRef.current) {
+        return;
+      }
+
+      setHeaderHeight(Math.ceil(headerRef.current.getBoundingClientRect().height));
+    }
+
+    updateHeaderHeight();
+    window.addEventListener('resize', updateHeaderHeight);
+
+    const resizeObserver =
+      typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(() => {
+            updateHeaderHeight();
+          })
+        : null;
+
+    if (headerRef.current && resizeObserver) {
+      resizeObserver.observe(headerRef.current);
+    }
+
+    return () => {
+      window.removeEventListener('resize', updateHeaderHeight);
+      resizeObserver?.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) {
+      return;
+    }
+
+    function updateViewportOffset() {
+      if (!viewport) {
+        return;
+      }
+
+      setViewportOffsetTop(Math.max(0, Math.round(viewport.offsetTop)));
+    }
+
+    updateViewportOffset();
+    viewport.addEventListener('resize', updateViewportOffset);
+    viewport.addEventListener('scroll', updateViewportOffset);
+
+    return () => {
+      viewport.removeEventListener('resize', updateViewportOffset);
+      viewport.removeEventListener('scroll', updateViewportOffset);
+    };
+  }, []);
+
+  useEffect(() => {
+    setIsMenuOpen(false);
+  }, [location.pathname]);
+
+  const shellStyle = {
+    '--fz-header-height': `${headerHeight}px`,
+    '--fz-viewport-offset-top': `${viewportOffsetTop}px`,
+  } as CSSProperties;
 
   return (
-    <div className="min-h-screen bg-[var(--fz-bg)] text-[#f5f0ea]">
-      <div className="mx-auto flex min-h-screen w-full max-w-md flex-col px-3 pb-6 pt-3 sm:px-4">
-        <header className="sticky top-0 z-40 bg-[var(--fz-bg)] px-1 pb-2 pt-1">
+    <div className="min-h-screen bg-[var(--fz-bg)] text-[#f5f0ea]" style={shellStyle}>
+      <header
+        ref={headerRef}
+        className="fixed inset-x-0 z-40 bg-[var(--fz-bg)]/98 backdrop-blur-sm"
+        style={{ top: `${viewportOffsetTop}px` }}
+      >
+        <div className="mx-auto w-full max-w-md px-4 pb-2 pt-3 sm:px-5">
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={() => setIsMenuOpen((currentValue) => !currentValue)}
               aria-label={isMenuOpen ? 'Fermer le menu' : 'Ouvrir le menu'}
-              className="fz-card-soft flex h-11 w-11 shrink-0 items-center justify-center rounded-[1rem] text-white"
+              className="flex h-11 w-11 shrink-0 items-center justify-center text-white"
             >
               <MenuIcon className="h-5 w-5" />
             </button>
@@ -97,9 +167,19 @@ export function AppShell() {
             </p>
             <div className="h-11 w-11 shrink-0" aria-hidden="true" />
           </div>
-
-          {isMenuOpen ? (
-            <nav className="mt-3 rounded-[1.4rem] border border-white/10 bg-[rgba(12,13,16,0.92)] p-2 shadow-[0_10px_30px_rgba(0,0,0,0.28)] backdrop-blur-xl">
+        </div>
+      </header>
+      {isMenuOpen ? (
+        <div
+          className="fixed inset-x-0 bottom-0 z-50 bg-black/48 backdrop-blur-[1px]"
+          style={{ top: `${headerHeight + viewportOffsetTop}px` }}
+          onClick={() => setIsMenuOpen(false)}
+        >
+          <div className="mx-auto w-full max-w-md px-4 pt-3 sm:px-5">
+            <nav
+              className="rounded-[1.4rem] border border-white/10 bg-[rgba(12,13,16,0.96)] p-2 shadow-[0_24px_60px_rgba(0,0,0,0.42)] backdrop-blur-xl"
+              onClick={(event) => event.stopPropagation()}
+            >
               <div className="flex flex-col gap-2">
                 {navItems.map((item) => (
                   <NavLink
@@ -117,22 +197,30 @@ export function AppShell() {
                       <>
                         <span
                           className={[
-                            'flex h-9 w-9 items-center justify-center rounded-full',
+                            'flex h-9 w-9 items-center justify-center rounded-full transition',
                             isActive ? 'bg-[#111319] text-white' : 'bg-white/6 text-white/85',
                           ].join(' ')}
                         >
                           <item.Icon className="h-4.5 w-4.5" />
                         </span>
-                        <span className="text-[0.72rem] font-black uppercase tracking-[0.16em]">{item.label}</span>
+                        <span
+                          className={[
+                            'text-[0.72rem] font-black uppercase tracking-[0.16em]',
+                            isActive ? 'text-[#111319]' : 'text-white',
+                          ].join(' ')}
+                        >
+                          {item.label}
+                        </span>
                       </>
                     )}
                   </NavLink>
                 ))}
               </div>
             </nav>
-          ) : null}
-        </header>
-
+          </div>
+        </div>
+      ) : null}
+      <div className="mx-auto flex min-h-screen w-full max-w-md flex-col px-3 pb-6 sm:px-4" style={{ paddingTop: `${headerHeight + 12}px` }}>
         <main className="flex-1 py-2">
           <Outlet />
         </main>

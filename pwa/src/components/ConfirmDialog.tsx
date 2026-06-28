@@ -44,7 +44,14 @@ export function ConfirmDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 px-4 pb-4 pt-16 sm:items-center">
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 px-4 pb-4 pt-16 sm:items-center"
+      onClick={(event) => {
+        if (event.target === event.currentTarget && !isBusy) {
+          onCancel();
+        }
+      }}
+    >
       <div
         role="dialog"
         aria-modal="true"

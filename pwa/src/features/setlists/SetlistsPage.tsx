@@ -1,16 +1,75 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { FeatureCard } from '@/components/FeatureCard';
+import { FormDialog } from '@/components/FormDialog';
 import { StatusPill } from '@/components/StatusPill';
 import { setlistsRepository } from '@/db/repositories/setlistsRepository';
+import { formatSetDuration } from '@/features/songs/songPresentation';
 
 export function SetlistsPage() {
-  const setlists = useLiveQuery(() => setlistsRepository.listSummaries(), []);
+  const navigate = useNavigate();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [isVirtualKeyboardOpen, setIsVirtualKeyboardOpen] = useState(false);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const setlists = useLiveQuery(() => setlistsRepository.listSummaries(), []);
+  const shouldReleaseStickyHeader = isSearchFocused && isVirtualKeyboardOpen;
+
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) {
+      return;
+    }
+    const activeViewport = viewport;
+
+    function updateKeyboardState() {
+      const activeElement = document.activeElement;
+      const isEditableElement =
+        activeElement instanceof HTMLInputElement ||
+        activeElement instanceof HTMLTextAreaElement ||
+        (activeElement instanceof HTMLElement && activeElement.isContentEditable);
+
+      const keyboardHeight = window.innerHeight - activeViewport.height;
+      setIsVirtualKeyboardOpen(isEditableElement && keyboardHeight > 150);
+    }
+
+    updateKeyboardState();
+    activeViewport.addEventListener('resize', updateKeyboardState);
+    activeViewport.addEventListener('scroll', updateKeyboardState);
+    window.addEventListener('focusin', updateKeyboardState);
+    window.addEventListener('focusout', updateKeyboardState);
+
+    return () => {
+      activeViewport.removeEventListener('resize', updateKeyboardState);
+      activeViewport.removeEventListener('scroll', updateKeyboardState);
+      window.removeEventListener('focusin', updateKeyboardState);
+      window.removeEventListener('focusout', updateKeyboardState);
+    };
+  }, []);
+
+  const filteredSetlists = useMemo(() => {
+    if (!setlists) {
+      return undefined;
+    }
+
+    const normalizedQuery = searchQuery.trim().toLocaleLowerCase('fr-FR');
+    if (!normalizedQuery) {
+      return setlists;
+    }
+
+    return setlists.filter((setlist) => {
+      const haystack = [setlist.name, setlist.notes ?? '', setlist.date ?? '']
+        .join(' ')
+        .toLocaleLowerCase('fr-FR');
+
+      return haystack.includes(normalizedQuery);
+    });
+  }, [searchQuery, setlists]);
 
   async function handleCreateSetlist(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -25,12 +84,14 @@ export function SetlistsPage() {
     setError(null);
 
     try {
-      await setlistsRepository.create({
+      const createdSetlist = await setlistsRepository.create({
         name: trimmedName,
         notes,
       });
+      setIsCreateOpen(false);
       setName('');
       setNotes('');
+      navigate(`/setlists/${createdSetlist.id}`);
     } catch {
       setError('Impossible de creer la setlist.');
     } finally {
@@ -40,93 +101,159 @@ export function SetlistsPage() {
 
   return (
     <div className="space-y-4">
-      <FeatureCard
-        eyebrow="Setlists"
-        title="Construire la scene"
-        description="Setlists claires, denses et mobiles, pour retrouver l'energie de l'interface Expo sans perdre la souplesse web."
-        aside={setlists ? `${setlists.length}` : '...'}
+      <section
+        className={[
+          'space-y-3 bg-[var(--fz-bg)] px-1 pb-3 pt-2',
+          shouldReleaseStickyHeader ? 'relative z-20' : 'sticky z-30 -mx-1 border-b border-white/8',
+        ].join(' ')}
+        style={
+          shouldReleaseStickyHeader
+            ? undefined
+            : {
+                top: 'calc(var(--fz-header-height, 64px) + var(--fz-viewport-offset-top, 0px))',
+              }
+        }
       >
-        <div className="flex flex-wrap gap-3">
-          <StatusPill label="Ordre local" tone="success" />
-          <StatusPill label="Multi-occurrence" />
-          <StatusPill label="Offline" tone="accent" />
-        </div>
-      </FeatureCard>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <h1 className="min-w-0 text-[2rem] font-black tracking-tight text-white">Setlists</h1>
+            <p className="mt-1 text-[0.82rem] text-[var(--fz-text-muted)]">
+              Ordonnez le live avec la meme densite visuelle que le repertoire.
+            </p>
+          </div>
 
-      <FeatureCard
-        eyebrow="Create"
-        title="Nouvelle setlist"
-        description="Creation immediate dans IndexedDB avec une presentation plus premium que formulaire d'admin."
-      >
-        <form className="space-y-3" onSubmit={handleCreateSetlist}>
-          <label className="block">
-            <span className="mb-2 block text-xs font-black uppercase tracking-[0.2em] text-[var(--fz-text-muted)]">
-              Nom
-            </span>
-            <input
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="Ex. Festival ete 2026"
-              className="fz-input text-sm"
-            />
-          </label>
-          <label className="block">
-            <span className="mb-2 block text-xs font-black uppercase tracking-[0.2em] text-[var(--fz-text-muted)]">
-              Notes
-            </span>
-            <textarea
-              value={notes}
-              onChange={(event) => setNotes(event.target.value)}
-              placeholder="Notes de concert ou contexte"
-              rows={3}
-              className="fz-input min-h-28 resize-y text-sm"
-            />
-          </label>
-          {error ? <p className="text-sm font-semibold text-rose-400">{error}</p> : null}
           <button
-            type="submit"
-            disabled={isSaving}
-            className="fz-button-primary w-full px-4 py-3 text-sm font-black uppercase tracking-[0.16em] disabled:opacity-60"
+            type="button"
+            onClick={() => {
+              setIsCreateOpen(true);
+              setName('');
+              setNotes('');
+              setError(null);
+            }}
+            className="fz-button-primary px-4 py-2.5 text-[0.82rem] font-black tracking-[0.01em]"
           >
-            {isSaving ? 'Creation...' : 'Creer la setlist'}
+            + Nouvelle
           </button>
-        </form>
-      </FeatureCard>
+        </div>
+
+        {filteredSetlists && filteredSetlists.length > 0 ? (
+          <input
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            onFocus={() => setIsSearchFocused(true)}
+            onBlur={() => setIsSearchFocused(false)}
+            placeholder="Rechercher une setlist..."
+            className="fz-input text-sm"
+          />
+        ) : null}
+      </section>
 
       <section className="space-y-3">
-        {setlists === undefined ? (
+        {filteredSetlists === undefined ? (
           <FeatureCard eyebrow="Chargement" title="Lecture des setlists" description="Ouverture de la base locale..." />
-        ) : setlists.length === 0 ? (
+        ) : filteredSetlists.length === 0 && !searchQuery.trim() ? (
           <FeatureCard
             eyebrow="Vide"
-            title="Aucune setlist pour l'instant"
-            description="Creez votre premiere setlist ici, puis ouvrez-la pour y ajouter des morceaux existants."
+            title="Vos setlists sont vides"
+            description="Creez une premiere setlist pour preparer le live web sans casser l'application Expo."
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setIsCreateOpen(true);
+                setName('');
+                setNotes('');
+                setError(null);
+              }}
+              className="fz-button-primary w-full px-4 py-4 text-sm font-black uppercase tracking-[0.16em]"
+            >
+              Creer ma premiere setlist
+            </button>
+          </FeatureCard>
+        ) : filteredSetlists.length === 0 ? (
+          <FeatureCard
+            eyebrow="Recherche"
+            title="Aucune setlist ne correspond"
+            description="Essayez un autre nom, une autre date ou un mot-cle dans les notes."
           />
         ) : (
-          setlists.map((setlist) => (
+          filteredSetlists.map((setlist) => (
             <Link
               key={setlist.id}
               to={`/setlists/${setlist.id}`}
-              className="fz-card block rounded-[1.6rem] p-5 transition hover:border-[var(--fz-border-strong)]"
+              className="fz-card block rounded-[1.2rem] px-4 py-3.5 transition hover:border-[var(--fz-border-strong)]"
             >
               <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-[0.7rem] font-black uppercase tracking-[0.22em] text-[var(--fz-text-muted)]">
+                <div className="min-w-0 flex-1">
+                  <h2 className="truncate text-[1.12rem] font-black tracking-tight text-white">{setlist.name}</h2>
+                  <p className="mt-2 truncate whitespace-nowrap text-[0.82rem] text-[var(--fz-text-muted)]">
                     {setlist.songCount} morceau{setlist.songCount > 1 ? 'x' : ''}
-                  </p>
-                  <h2 className="mt-2 text-[1.45rem] font-black tracking-tight text-white">{setlist.name}</h2>
-                  <p className="mt-3 text-sm text-[var(--fz-text-muted)]">
-                    {setlist.notes || "Ouvrez la setlist pour gerer l'ordre, les ajouts et les retraits."}
+                    {' · '}
+                    {formatSetDuration(setlist.totalDurationSeconds)}
                   </p>
                 </div>
-                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.68rem] font-black uppercase tracking-[0.2em] text-white/90">
-                  Ouvrir
-                </span>
+
+                <div className="flex shrink-0 items-start pt-0.5">
+                  <StatusPill label={setlist.songCount > 0 ? 'Prete' : 'Brouillon'} tone={setlist.songCount > 0 ? 'success' : 'default'} />
+                </div>
               </div>
             </Link>
           ))
         )}
       </section>
+
+      {isCreateOpen ? (
+        <FormDialog eyebrow="Creation" title="Nouvelle setlist" onClose={() => setIsCreateOpen(false)}>
+          <form className="space-y-3" onSubmit={handleCreateSetlist}>
+            <label className="block">
+              <span className="mb-2 block text-xs font-black uppercase tracking-[0.2em] text-[var(--fz-text-muted)]">
+                Nom
+              </span>
+              <input
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="Ex. Festival ete 2026"
+                autoFocus
+                disabled={isSaving}
+                className="fz-input text-sm"
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-2 block text-xs font-black uppercase tracking-[0.2em] text-[var(--fz-text-muted)]">
+                Notes
+              </span>
+              <textarea
+                value={notes}
+                onChange={(event) => setNotes(event.target.value)}
+                placeholder="Intentions de scene, rappels ou contexte"
+                rows={3}
+                disabled={isSaving}
+                className="fz-input min-h-28 resize-y text-sm"
+              />
+            </label>
+
+            {error ? <p className="text-sm font-semibold text-rose-400">{error}</p> : null}
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setIsCreateOpen(false)}
+                className="fz-button-secondary flex-1 px-4 py-2.5 text-[0.82rem] font-black uppercase tracking-[0.12em] text-white"
+              >
+                Annuler
+              </button>
+              <button
+                type="submit"
+                disabled={isSaving}
+                className="fz-button-primary flex-1 px-4 py-2.5 text-[0.82rem] font-black uppercase tracking-[0.12em] disabled:opacity-60"
+              >
+                {isSaving ? 'Creation...' : 'Creer'}
+              </button>
+            </div>
+          </form>
+        </FormDialog>
+      ) : null}
     </div>
   );
 }

@@ -338,6 +338,7 @@ export async function applySyncImport(
 
       songsToPut.push({
         ...song,
+        workspaceId: 'default-workspace',
         status: song.status ?? 'Idee',
         durationSeconds: song.durationSeconds ?? 0,
       });
@@ -352,7 +353,10 @@ export async function applySyncImport(
         continue;
       }
 
-      setlistsToPut.push({ ...setlist });
+      setlistsToPut.push({
+        ...setlist,
+        workspaceId: 'default-workspace',
+      });
       result.setlistsImported += 1;
     }
 
@@ -372,7 +376,10 @@ export async function applySyncImport(
         continue;
       }
 
-      setlistSongsToPut.push({ ...setlistSong });
+      setlistSongsToPut.push({
+        ...setlistSong,
+        workspaceId: 'default-workspace',
+      });
       result.setlistSongsImported += 1;
     }
 

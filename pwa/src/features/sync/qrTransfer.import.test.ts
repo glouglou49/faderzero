@@ -69,6 +69,7 @@ describe('qrTransfer import', () => {
     try {
       await database.songs.add({
         id: 'song-1',
+        workspaceId: 'default-workspace',
         title: 'Local Song',
         lyrics: 'Local',
         status: 'Idee',
@@ -107,6 +108,7 @@ describe('qrTransfer import', () => {
     try {
       await database.songs.add({
         id: 'song-1',
+        workspaceId: 'default-workspace',
         title: 'Existing newer song',
         lyrics: 'Local',
         status: 'Idee',
@@ -116,12 +118,14 @@ describe('qrTransfer import', () => {
       });
       await database.setlists.add({
         id: 'set-1',
+        workspaceId: 'default-workspace',
         name: 'Existing older setlist',
         createdAt: 1,
         updatedAt: 10,
       });
       await database.setlistSongs.add({
         id: 'entry-1',
+        workspaceId: 'default-workspace',
         setlistId: 'set-1',
         songId: 'song-1',
         position: 0,

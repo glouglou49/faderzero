@@ -29,6 +29,17 @@ describe('SetlistSongsRepository', () => {
     const updatedRow = await repository.update(secondEntry.id, { position: 0 });
     expect(updatedRow.position).toBe(0);
 
+    const annotatedRow = await repository.update(secondEntry.id, {
+      annotation: 'Intro batterie',
+      noteShowBpm: true,
+      noteShowKey: true,
+      isDirectSegue: true,
+    });
+    expect(annotatedRow.annotation).toBe('Intro batterie');
+    expect(annotatedRow.noteShowBpm).toBe(true);
+    expect(annotatedRow.noteShowKey).toBe(true);
+    expect(annotatedRow.isDirectSegue).toBe(true);
+
     const reorderedRows = await repository.listBySetlistId('set-1');
     expect(reorderedRows.map((row) => row.position)).toEqual([0, 1, 3]);
 
@@ -60,6 +71,21 @@ describe('SetlistSongsRepository', () => {
     const rows = await repository.listBySetlistId('set-2');
     expect(rows.map((row) => row.position)).toEqual([0, 1]);
     expect(rows.map((row) => row.songId)).toEqual(['song-a', 'song-b']);
+
+    await destroyTestDatabase(database);
+  });
+
+  it('clears direct segue on the first song after reordering', async () => {
+    const database = await createTestDatabase('setlist-songs-first-no-segue');
+    const repository = new SetlistSongsRepository(database);
+
+    await repository.addSongToSetlist('set-3', 'song-a');
+    const secondEntry = await repository.addSongToSetlist('set-3', 'song-b');
+    await repository.update(secondEntry.id, { isDirectSegue: true });
+
+    const movedRows = await repository.move(secondEntry.id, -1);
+    expect(movedRows[0]?.id).toBe(secondEntry.id);
+    expect(movedRows[0]?.isDirectSegue).toBe(false);
 
     await destroyTestDatabase(database);
   });

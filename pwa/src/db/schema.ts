@@ -2,6 +2,7 @@ export type SongStatus = 'Idee' | 'En cours' | 'Pret';
 
 export interface SongRecord {
   id: string;
+  workspaceId: string;
   title: string;
   artist?: string;
   lyrics: string;
@@ -13,31 +14,98 @@ export interface SongRecord {
   createdAt: number;
   updatedAt: number;
   deletedAt?: number;
+  serverVersion?: number;
+  syncStatus?: 'synced' | 'pending' | 'conflict';
 }
 
 export interface SetlistRecord {
   id: string;
+  workspaceId: string;
   name: string;
   date?: string;
   notes?: string;
+  closingAnnotation?: string;
   createdAt: number;
   updatedAt: number;
   deletedAt?: number;
+  serverVersion?: number;
+  syncStatus?: 'synced' | 'pending' | 'conflict';
 }
 
 export interface SetlistSongRecord {
   id: string;
+  workspaceId: string;
   setlistId: string;
   songId: string;
   position: number;
+  annotation?: string;
+  noteShowBpm?: boolean;
+  noteShowKey?: boolean;
+  isDirectSegue?: boolean;
   createdAt: number;
   updatedAt: number;
+  deletedAt?: number;
+  serverVersion?: number;
+  syncStatus?: 'synced' | 'pending' | 'conflict';
+}
+
+export interface SongAssetRecord {
+  id: string;
+  workspaceId: string;
+  songId: string;
+  storagePath: string;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+  durationSeconds?: number;
+  createdAt: number;
+  updatedAt: number;
+  deletedAt?: number;
+  serverVersion?: number;
+  syncStatus?: 'synced' | 'pending' | 'conflict';
+}
+
+export interface SyncQueueItem {
+  id?: number;
+  workspaceId: string;
+  entityType: 'song' | 'setlist' | 'setlistSong' | 'songAsset';
+  entityId: string;
+  operation: 'create' | 'update' | 'soft_delete';
+  payload: any;
+  baseServerVersion?: number;
+  status: 'pending' | 'processing' | 'failed' | 'conflict';
+  queuedAt: number;
+  lastTriedAt?: number;
+  errorMessage?: string;
+}
+
+export interface SyncConflictRecord {
+  id: string;
+  workspaceId: string;
+  entityType: 'song' | 'setlist' | 'setlistSong' | 'songAsset';
+  entityId: string;
+  localRecord: any;
+  remoteRecord: any;
+  resolvedAt?: number;
+  detectedAt: number;
+}
+
+export interface SyncStateRecord {
+  id: string;
+  workspaceId: string;
+  tableName: string;
+  lastPulledVersion: number;
+  lastPulledAt: number;
 }
 
 export interface DatabaseSchema {
   songs: SongRecord;
   setlists: SetlistRecord;
   setlistSongs: SetlistSongRecord;
+  songAssets: SongAssetRecord;
+  syncQueue: SyncQueueItem;
+  syncConflicts: SyncConflictRecord;
+  syncState: SyncStateRecord;
 }
 
 export interface CreateSongInput {
@@ -72,12 +140,14 @@ export interface CreateSetlistInput {
   name: string;
   date?: string;
   notes?: string;
+  closingAnnotation?: string;
 }
 
 export interface UpdateSetlistInput {
   name?: string;
   date?: string;
   notes?: string;
+  closingAnnotation?: string;
   deletedAt?: number;
 }
 
@@ -94,6 +164,7 @@ export interface SetlistSummary {
   updatedAt: number;
   deletedAt?: number;
   songCount: number;
+  totalDurationSeconds: number;
 }
 
 export interface CreateSetlistSongInput {
@@ -104,6 +175,10 @@ export interface CreateSetlistSongInput {
 
 export interface UpdateSetlistSongInput {
   position?: number;
+  annotation?: string;
+  noteShowBpm?: boolean;
+  noteShowKey?: boolean;
+  isDirectSegue?: boolean;
 }
 
 export interface SetlistSongDetail extends SetlistSongRecord {

@@ -55,6 +55,25 @@ describe('SongsRepository', () => {
     expect(allSongs.find((song) => song.id === firstSong.id)?.deletedAt).toBeDefined();
     expect(await setlistSongsRepository.listBySetlistId('set-1')).toHaveLength(0);
 
+    // Vérification de la file de synchronisation (syncQueue)
+    const queue = await database.syncQueue.toArray();
+    
+    // B Song : créée puis soft-supprimée hors-ligne -> retirée de la queue
+    // SetlistSong : créée puis soft-supprimée hors-ligne -> retirée de la queue
+    // A Song : créée puis mise à jour -> la mutation de création a fusionné les mises à jour
+    expect(queue).toHaveLength(1);
+    expect(queue[0]).toMatchObject({
+      entityType: 'song',
+      entityId: secondSong.id,
+      operation: 'create',
+    });
+    expect(queue[0]?.payload).toMatchObject({
+      title: 'A Song',
+      bpm: 124,
+      status: 'Pret',
+      durationSeconds: 215,
+    });
+
     await destroyTestDatabase(database);
   });
 });

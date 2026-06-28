@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import QRCode from 'qrcode';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '@/db/db';
+import { useAuthStore } from '@/stores/authStore';
+import { pushPendingMutations, pullRemoteChanges, resolveConflict } from '@/services/supabase/sync';
 import { FeatureCard } from '@/components/FeatureCard';
 import { StatusPill } from '@/components/StatusPill';
 import {
@@ -44,6 +48,65 @@ function getScannerStartError() {
 
 export function SyncPage() {
   const [transfer, setTransfer] = useState<PreparedSyncTransfer | null>(null);
+  
+  // États et hooks pour la synchronisation Supabase
+  const { session, activeWorkspace, signOut } = useAuthStore();
+  const [isCloudSyncing, setIsCloudSyncing] = useState(false);
+  const [cloudSyncError, setCloudSyncError] = useState<string | null>(null);
+  const [cloudSyncSuccess, setCloudSyncSuccess] = useState<boolean>(false);
+
+  const pendingCount = useLiveQuery(async () => {
+    if (!activeWorkspace) return 0;
+    return db.syncQueue
+      .where('workspaceId')
+      .equals(activeWorkspace.id)
+      .filter((item) => item.status === 'pending' || item.status === 'failed')
+      .count();
+  }, [activeWorkspace]);
+
+  const conflicts = useLiveQuery(async () => {
+    if (!activeWorkspace) return [];
+    return db.syncConflicts
+      .where('workspaceId')
+      .equals(activeWorkspace.id)
+      .toArray();
+  }, [activeWorkspace]);
+
+  const lastState = useLiveQuery(async () => {
+    if (!activeWorkspace) return [];
+    return db.syncState
+      .where('workspaceId')
+      .equals(activeWorkspace.id)
+      .toArray();
+  }, [activeWorkspace]);
+
+  async function handleCloudSync() {
+    if (!activeWorkspace || isCloudSyncing) return;
+    setIsCloudSyncing(true);
+    setCloudSyncError(null);
+    setCloudSyncSuccess(false);
+
+    try {
+      await pushPendingMutations(activeWorkspace.id);
+      await pullRemoteChanges(activeWorkspace.id);
+      setCloudSyncSuccess(true);
+    } catch (err: any) {
+      console.error(err);
+      setCloudSyncError(err.message || 'Erreur lors de la synchronisation.');
+    } finally {
+      setIsCloudSyncing(false);
+    }
+  }
+
+  async function handleResolveConflict(conflictId: string, resolution: 'local' | 'remote') {
+    try {
+      await resolveConflict(conflictId, resolution);
+    } catch (err: any) {
+      console.error(err);
+      setCloudSyncError('Erreur de résolution : ' + err.message);
+    }
+  }
+
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -377,6 +440,114 @@ export function SyncPage() {
 
   return (
     <div className="space-y-4">
+      {/* SECTION SUPABASE SYNC */}
+      <FeatureCard
+        eyebrow="Supabase"
+        title="Synchronisation Cloud"
+        description="Statut de connexion de votre groupe et file d'attente."
+        aside="Cloud"
+      >
+        <div className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-[1.35rem] border border-white/8 bg-black/20 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-[var(--fz-text-muted)]">Compte</p>
+              <p className="mt-2 text-sm font-semibold text-white truncate">{session?.user?.email || 'Non connecté'}</p>
+            </div>
+            <div className="rounded-[1.35rem] border border-white/8 bg-black/20 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-[var(--fz-text-muted)]">Groupe Actif</p>
+              <p className="mt-2 text-sm font-semibold text-white">{activeWorkspace?.name || 'Aucun'}</p>
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-[1.35rem] border border-white/8 bg-black/20 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-[var(--fz-text-muted)]">En attente de sync</p>
+              <p className="mt-2 text-base font-black text-white">{pendingCount ?? 0} modifications</p>
+            </div>
+            <div className="rounded-[1.35rem] border border-white/8 bg-black/20 p-4">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-[var(--fz-text-muted)]">Checkpoints</p>
+              <div className="mt-2 space-y-1 text-xs text-white/80">
+                {lastState && lastState.length > 0 ? (
+                  lastState.map(s => (
+                    <div key={s.id} className="flex justify-between">
+                      <span className="capitalize">{s.tableName} :</span>
+                      <span className="font-mono">v{s.lastPulledVersion}</span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-white/40">Aucun historique de sync</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* LISTE DES CONFLITS */}
+          {conflicts && conflicts.length > 0 && (
+            <div className="rounded-[1.35rem] border border-orange-500/20 bg-orange-500/5 p-4 space-y-3">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-orange-400">Conflits Détectés ({conflicts.length})</p>
+              <div className="space-y-3.5">
+                {conflicts.map((conflict) => (
+                  <div key={conflict.id} className="rounded-xl border border-white/5 bg-white/3 p-3.5 space-y-3">
+                    <div>
+                      <p className="text-[0.62rem] font-bold uppercase tracking-[0.1em] text-white/50">{conflict.entityType}</p>
+                      <p className="text-sm font-semibold text-white mt-0.5">
+                        {conflict.localRecord?.title || conflict.localRecord?.name || conflict.entityId}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleResolveConflict(conflict.id, 'local')}
+                        className="flex-1 rounded-lg border border-orange-500/20 bg-orange-500/10 py-2 text-[0.65rem] font-bold uppercase tracking-[0.1em] text-orange-300 hover:bg-orange-500/20 transition"
+                      >
+                        Garder ma version
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleResolveConflict(conflict.id, 'remote')}
+                        className="flex-1 rounded-lg border border-white/10 bg-white/5 py-2 text-[0.65rem] font-bold uppercase tracking-[0.1em] text-white/80 hover:bg-white/10 transition"
+                      >
+                        Garder version groupe
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {cloudSyncError && (
+            <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs">
+              {cloudSyncError}
+            </div>
+          )}
+
+          {cloudSyncSuccess && (
+            <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs">
+              Synchronisation réussie !
+            </div>
+          )}
+
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={handleCloudSync}
+              disabled={isCloudSyncing || !activeWorkspace}
+              className="fz-button-primary flex-1 py-3.5 text-sm font-black uppercase tracking-[0.16em]"
+            >
+              {isCloudSyncing ? 'Synchronisation...' : 'Synchroniser maintenant'}
+            </button>
+            <button
+              type="button"
+              onClick={() => signOut()}
+              className="fz-button-secondary px-4 py-3.5 text-sm font-black uppercase tracking-[0.16em] text-white"
+            >
+              Déconnexion
+            </button>
+          </div>
+        </div>
+      </FeatureCard>
+
       <FeatureCard
         eyebrow="Sync"
         title="Transmission QR"

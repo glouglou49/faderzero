@@ -9,12 +9,18 @@ import type {
 } from '@/db/schema';
 import { createId } from '@/lib/createId';
 import { now } from '@/lib/now';
+import { useAuthStore } from '@/stores/authStore';
+import { enqueueMutation } from '@/db/syncQueueHelper';
 
 export class SetlistsRepository {
   private readonly database: FaderZeroDatabase;
 
   constructor(database: FaderZeroDatabase = db) {
     this.database = database;
+  }
+
+  private getActiveWorkspaceId(): string {
+    return useAuthStore.getState().activeWorkspace?.id || 'default-workspace';
   }
 
   async list(options: SetlistListOptions = {}) {
@@ -26,19 +32,39 @@ export class SetlistsRepository {
   }
 
   async listSummaries(options: SetlistListOptions = {}) {
-    const [setlists, setlistSongs] = await Promise.all([
+    const [setlists, setlistSongs, songs] = await Promise.all([
       this.list(options),
       this.database.setlistSongs.toArray(),
+      this.database.songs.toArray(),
     ]);
 
+    const activeSongDurations = new Map(
+      songs
+        .filter((song) => song.deletedAt === undefined)
+        .map((song) => [song.id, song.durationSeconds] as const),
+    );
     const counts = new Map<string, number>();
+    const totalDurations = new Map<string, number>();
     for (const setlistSong of setlistSongs) {
+      if (setlistSong.deletedAt !== undefined) {
+        continue;
+      }
+      const duration = activeSongDurations.get(setlistSong.songId);
+      if (duration === undefined) {
+        continue;
+      }
+
       counts.set(setlistSong.setlistId, (counts.get(setlistSong.setlistId) ?? 0) + 1);
+      totalDurations.set(
+        setlistSong.setlistId,
+        (totalDurations.get(setlistSong.setlistId) ?? 0) + duration,
+      );
     }
 
     return setlists.map<SetlistSummary>((setlist) => ({
       ...setlist,
       songCount: counts.get(setlist.id) ?? 0,
+      totalDurationSeconds: totalDurations.get(setlist.id) ?? 0,
     }));
   }
 
@@ -48,15 +74,20 @@ export class SetlistsRepository {
 
   async create(input: CreateSetlistInput) {
     const timestamp = now();
+    const workspaceId = this.getActiveWorkspaceId();
+
     const setlist: SetlistRecord = {
       id: createId(),
+      workspaceId,
       name: input.name.trim(),
       createdAt: timestamp,
       updatedAt: timestamp,
+      syncStatus: 'pending',
     };
 
     const date = input.date?.trim();
     const notes = input.notes?.trim();
+    const closingAnnotation = input.closingAnnotation?.trim();
 
     if (date) {
       setlist.date = date;
@@ -64,8 +95,29 @@ export class SetlistsRepository {
     if (notes) {
       setlist.notes = notes;
     }
+    if (closingAnnotation) {
+      setlist.closingAnnotation = closingAnnotation;
+    }
 
-    await this.database.setlists.add(setlist);
+    await this.database.transaction('rw', this.database.setlists, this.database.syncQueue, async () => {
+      await this.database.setlists.add(setlist);
+      await enqueueMutation(
+        this.database,
+        workspaceId,
+        'setlist',
+        setlist.id,
+        'create',
+        {
+          name: setlist.name,
+          date: setlist.date,
+          notes: setlist.notes,
+          closingAnnotation: setlist.closingAnnotation,
+          createdAt: setlist.createdAt,
+          updatedAt: setlist.updatedAt,
+        }
+      );
+    });
+
     return setlist;
   }
 
@@ -75,32 +127,67 @@ export class SetlistsRepository {
       throw new Error(`Setlist not found: ${id}`);
     }
 
-    const nextSetlist: SetlistRecord = { ...existingSetlist, updatedAt: now() };
+    const timestamp = now();
+    const nextSetlist: SetlistRecord = { 
+      ...existingSetlist, 
+      updatedAt: timestamp,
+      syncStatus: 'pending',
+    };
+
+    const payload: any = { updatedAt: timestamp };
 
     if (updates.name !== undefined) {
       nextSetlist.name = updates.name.trim();
+      payload.name = nextSetlist.name;
     }
     if (updates.deletedAt !== undefined) {
       nextSetlist.deletedAt = updates.deletedAt;
+      payload.deletedAt = nextSetlist.deletedAt;
     }
     if (updates.date !== undefined) {
       const date = updates.date.trim();
       if (date) {
         nextSetlist.date = date;
+        payload.date = date;
       } else {
         delete nextSetlist.date;
+        payload.date = null;
       }
     }
     if (updates.notes !== undefined) {
       const notes = updates.notes.trim();
       if (notes) {
         nextSetlist.notes = notes;
+        payload.notes = notes;
       } else {
         delete nextSetlist.notes;
+        payload.notes = null;
+      }
+    }
+    if (updates.closingAnnotation !== undefined) {
+      const closingAnnotation = updates.closingAnnotation.trim();
+      if (closingAnnotation) {
+        nextSetlist.closingAnnotation = closingAnnotation;
+        payload.closingAnnotation = closingAnnotation;
+      } else {
+        delete nextSetlist.closingAnnotation;
+        payload.closingAnnotation = null;
       }
     }
 
-    await this.database.setlists.put(nextSetlist);
+    await this.database.transaction('rw', this.database.setlists, this.database.syncQueue, async () => {
+      await this.database.setlists.put(nextSetlist);
+      await enqueueMutation(
+        this.database,
+        nextSetlist.workspaceId,
+        'setlist',
+        nextSetlist.id,
+        'update',
+        payload,
+        existingSetlist.serverVersion
+      );
+    });
+
     return nextSetlist;
   }
 
@@ -115,13 +202,50 @@ export class SetlistsRepository {
       ...existingSetlist,
       deletedAt: timestamp,
       updatedAt: timestamp,
+      syncStatus: 'pending',
     };
 
-    await this.database.transaction('rw', this.database.setlists, this.database.setlistSongs, async () => {
-      await this.database.setlists.put(deletedSetlist);
-      const relatedEntries = await this.database.setlistSongs.where('setlistId').equals(id).primaryKeys();
-      await this.database.setlistSongs.bulkDelete(relatedEntries);
-    });
+    await this.database.transaction(
+      'rw',
+      this.database.setlists,
+      this.database.setlistSongs,
+      this.database.syncQueue,
+      async () => {
+        // 1. Soft delete de la setlist
+        await this.database.setlists.put(deletedSetlist);
+        await enqueueMutation(
+          this.database,
+          deletedSetlist.workspaceId,
+          'setlist',
+          deletedSetlist.id,
+          'soft_delete',
+          { deletedAt: timestamp },
+          existingSetlist.serverVersion
+        );
+
+        // 2. Soft delete des liaisons setlistSongs associées
+        const relatedEntries = await this.database.setlistSongs.where('setlistId').equals(id).toArray();
+        for (const entry of relatedEntries) {
+          if (entry.deletedAt === undefined) {
+            await this.database.setlistSongs.put({
+              ...entry,
+              deletedAt: timestamp,
+              syncStatus: 'pending',
+              updatedAt: timestamp,
+            });
+            await enqueueMutation(
+              this.database,
+              entry.workspaceId,
+              'setlistSong',
+              entry.id,
+              'soft_delete',
+              { deletedAt: timestamp },
+              entry.serverVersion
+            );
+          }
+        }
+      }
+    );
 
     return deletedSetlist;
   }
